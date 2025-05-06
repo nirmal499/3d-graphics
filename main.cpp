@@ -56,7 +56,9 @@ class Engine
             SDL_SetRenderDrawColor(_renderer, 100, 130, 160, 255); /* (<R>, <G>, <B>, <0:Transparency::255:Opaque)> */
             SDL_RenderClear(_renderer); /* It clears/fills the renderer with the specified color */
 
-            FillColorBuffer(0xFFFFFF00);
+            FillColorBuffer(0xFF000000);
+            // DrawGrid();
+            DrawRectangle({300, 200, 300, 150, 0xFFFF00FF});
             RenderColorBuffer();
 
             SDL_RenderPresent(_renderer);
@@ -97,6 +99,55 @@ class Engine
         }
 
     private:
+    void DrawGrid()
+        {
+            for(int y = 0; y < HEIGHT; y++)
+            {
+                for(int x = 0; x < WIDTH; x++)
+                {
+                    if(x % 10 == 0 || y % 10 == 0)
+                    {
+                        _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
+                    }
+                }
+            }
+
+            for(int y = 0; y < HEIGHT; y++)
+            {
+                for(int x = 0; x < WIDTH; x++)
+                {
+                    if(x % 10 == 0 && y % 10 == 0)
+                    {
+                        _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
+                    }
+                }
+            }
+        }
+
+        void DrawRectangle(const std::array<uint32_t, 5>& rectInfo)
+        {
+            /*  
+                <x:0,y:1,w:2,h:3,color:4> :- 
+            
+                (x,y) is Position
+                (w,h) is Size
+                color is SDL_PIXELFORMAT_ARGB8888
+            
+            */
+            for(int i = 0; i < rectInfo[2]; i++)
+            {
+                for(int j = 0; j < rectInfo[3]; j++)
+                {
+                    uint32_t current_x = rectInfo[0] + i;
+                    uint32_t current_y = rectInfo[1] + j;
+                    
+                    _colorBuffer[(WIDTH * current_y) + current_x] = rectInfo[4];
+                    
+                }
+            }
+
+        }
+
         void FillColorBuffer(uint32_t color)
         {
             for(int y = 0; y < HEIGHT; y++)
