@@ -58,7 +58,7 @@ class Engine
 
             FillColorBuffer(0xFF000000);
             // DrawGrid();
-            DrawRectangle({300, 200, 300, 150, 0xFFFF00FF});
+            DrawRectangle({100, 150, 300, 150, 0xFFFF00FF});
             RenderColorBuffer();
 
             SDL_RenderPresent(_renderer);
@@ -105,7 +105,7 @@ class Engine
             {
                 for(int x = 0; x < WIDTH; x++)
                 {
-                    if(x % 10 == 0 || y % 10 == 0)
+                    if(y % 10 == 0 || x % 10 == 0)
                     {
                         _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
                     }
@@ -116,7 +116,7 @@ class Engine
             {
                 for(int x = 0; x < WIDTH; x++)
                 {
-                    if(x % 10 == 0 && y % 10 == 0)
+                    if(y % 10 == 0 && x % 10 == 0)
                     {
                         _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
                     }
@@ -134,12 +134,12 @@ class Engine
                 color is SDL_PIXELFORMAT_ARGB8888
             
             */
-            for(int i = 0; i < rectInfo[2]; i++)
+            for(int y = 0; y < rectInfo[3]; y++)
             {
-                for(int j = 0; j < rectInfo[3]; j++)
+                for(int x = 0; x < rectInfo[2]; x++)
                 {
-                    uint32_t current_x = rectInfo[0] + i;
-                    uint32_t current_y = rectInfo[1] + j;
+                    uint32_t current_x = rectInfo[0] + x;
+                    uint32_t current_y = rectInfo[1] + y;
                     
                     _colorBuffer[(WIDTH * current_y) + current_x] = rectInfo[4];
                     
