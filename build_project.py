@@ -19,6 +19,7 @@ cmake_configure_cmd = [
     "-DCMAKE_C_COMPILER=gcc",
     "-DCMAKE_CXX_COMPILER=g++",
     "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    # "-DCMAKE_BUILD_TYPE=Debug",
     "-B", build_dir,
     "-S", source_dir
 ]

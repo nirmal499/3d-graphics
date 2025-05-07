@@ -8,15 +8,15 @@
 
 struct Vec2
 {
-    uint32_t x;
-    uint32_t y;
+    float x;
+    float y;
 };
 
 struct Vec3
 {
-    uint32_t x;
-    uint32_t y;
-    uint32_t z;
+    float x;
+    float y;
+    float z;
 };
 
 template<uint32_t WIDTH, uint32_t HEIGHT>
@@ -34,11 +34,11 @@ class Engine
             _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
             int point_count = 0;
-            for(uint32_t x = 0; x <= 128; x += 16)
+            for(float x = -1; x <= 1; x += 0.25)
             {
-                for(uint32_t y = 0; y <= 128; y += 16)
+                for(float y = -1; y <= 1; y += 0.25)
                 {
-                    for(uint32_t z = 0; z <= 128; z += 16)
+                    for(float z = -1; z <= 1; z += 0.25)
                     {
                         _cubePoints[point_count++] = {x,y,z};
                     }
@@ -71,7 +71,9 @@ class Engine
         {
             for(int i = 0; i < _cubePoints.size(); i++)
             {
-                const Vec3& point = _cubePoints[i];
+                Vec3 point = _cubePoints[i];
+
+                point.z -= _cameraPosition.z;
 
                 // Project the current point
                 Vec2 projected_point = Project(point);
@@ -91,7 +93,7 @@ class Engine
             for(int i = 0; i < _projectedCubePoints.size(); i++)
             {
                 const Vec2& projected_point = _projectedCubePoints[i];
-                DrawRectangle({projected_point.x + 300, projected_point.y + 300, 4, 4, 0xFFFFFF00});
+                DrawRectangle({static_cast<uint32_t>(projected_point.x + (WIDTH/2.0)), static_cast<uint32_t>(projected_point.y + (HEIGHT/2.0)), 4, 4, 0xFFFFFF00});
             }
             
             RenderColorBuffer();
@@ -184,15 +186,18 @@ class Engine
 
         void DrawPixel(int x, int y, uint32_t color)
         {
-            _colorBuffer[(WIDTH * y) + x] = color;
+            if(x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT)
+            {
+                _colorBuffer[(WIDTH * y) + x] = color;
+            }
         }
 
         /* Function that receives a 3D vector and returns a projected 2D point */
         Vec2 Project(const Vec3& point)
         {
             Vec2 projected_point = {
-                _fovFactor * point.x,
-                _fovFactor * point.y
+                (_fovFactor * point.x) / point.z,
+                (_fovFactor * point.y) / point.z
             };
 
             return projected_point;
@@ -210,7 +215,8 @@ class Engine
         std::array<Vec2, 9*9*9> _projectedCubePoints;
 
         bool _isRunning = false;
-        uint32_t _fovFactor = 1;
+        uint32_t _fovFactor = 128;
+        Vec3 _cameraPosition = {0, 0, -2};
 
         SDL_Window* _window;
         SDL_Renderer* _renderer;
