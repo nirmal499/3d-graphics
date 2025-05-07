@@ -6,6 +6,19 @@
 #include <memory>
 #include <array>
 
+struct Vec2
+{
+    uint32_t x;
+    uint32_t y;
+};
+
+struct Vec3
+{
+    uint32_t x;
+    uint32_t y;
+    uint32_t z;
+};
+
 template<uint32_t WIDTH, uint32_t HEIGHT>
 class Engine
 {
@@ -18,11 +31,19 @@ class Engine
 
         void Setup()
         {
-            /* Set the pixel at row 10 column 20 to color red */
-            /* _colorBuffer[(WIDTH * 10) + 20] = 0xFFFF0000; */
-
             _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
+            int point_count = 0;
+            for(uint32_t x = 0; x <= 128; x += 16)
+            {
+                for(uint32_t y = 0; y <= 128; y += 16)
+                {
+                    for(uint32_t z = 0; z <= 128; z += 16)
+                    {
+                        _cubePoints[point_count++] = {x,y,z};
+                    }
+                }
+            }
         }
 
         void ProcessInput()
@@ -48,19 +69,32 @@ class Engine
 
         void Update()
         {
+            for(int i = 0; i < _cubePoints.size(); i++)
+            {
+                const Vec3& point = _cubePoints[i];
 
+                // Project the current point
+                Vec2 projected_point = Project(point);
+
+                // Save the projected 2D vector in the array of the projected points
+                _projectedCubePoints[i] = std::move(projected_point);
+
+            }
         }
 
         void Render()
         {
-            SDL_SetRenderDrawColor(_renderer, 100, 130, 160, 255); /* (<R>, <G>, <B>, <0:Transparency::255:Opaque)> */
-            SDL_RenderClear(_renderer); /* It clears/fills the renderer with the specified color */
-
             FillColorBuffer(0xFF000000);
             // DrawGrid();
-            DrawRectangle({100, 150, 300, 150, 0xFFFF00FF});
-            RenderColorBuffer();
 
+            // Loop all projected points and render them
+            for(int i = 0; i < _projectedCubePoints.size(); i++)
+            {
+                const Vec2& projected_point = _projectedCubePoints[i];
+                DrawRectangle({projected_point.x + 300, projected_point.y + 300, 4, 4, 0xFFFFFF00});
+            }
+            
+            RenderColorBuffer();
             SDL_RenderPresent(_renderer);
         }
 
@@ -99,32 +133,20 @@ class Engine
         }
 
     private:
-    void DrawGrid()
-        {
-            // for(int i = 0; i < WIDTH; i++)
-            // {
-            //     for(int j = 0; j < HEIGHT; j++)
-            //     {
-            //         if(i % 10 == 0 || j % 10 == 0)
-            //         {
-            //             // _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
-            //             DrawPixel(i, j, 0xFF333333);
-            //         }
-            //     }
-            // }
-
-            for(int i = 0; i < WIDTH; i++)
+        void DrawGrid()
             {
-                for(int j = 0; j < HEIGHT; j++)
+                for(int i = 0; i < WIDTH; i++)
                 {
-                    if(i % 10 == 0 && j % 10 == 0)
+                    for(int j = 0; j < HEIGHT; j++)
                     {
-                        // _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
-                        DrawPixel(i, j, 0xFF333333);
+                        if(i % 10 == 0 || j % 10 == 0)
+                        {
+                            DrawPixel(i, j, 0xFF333333);
+                        }
                     }
                 }
+                
             }
-        }
 
         void DrawRectangle(const std::array<uint32_t, 5>& rectInfo)
         {
@@ -143,7 +165,6 @@ class Engine
                     uint32_t current_x = rectInfo[0] + i;
                     uint32_t current_y = rectInfo[1] + j;
                     
-                    // _colorBuffer[(WIDTH * current_y) + current_x] = rectInfo[4];
                     DrawPixel(current_x, current_y, rectInfo[4]);
                 }
             }
@@ -156,7 +177,6 @@ class Engine
             {
                 for(int j = 0; j < HEIGHT; j++)
                 {
-                    // _colorBuffer[(WIDTH * y) + x] = color;
                     DrawPixel(i, j, color);
                 }
             }
@@ -167,6 +187,17 @@ class Engine
             _colorBuffer[(WIDTH * y) + x] = color;
         }
 
+        /* Function that receives a 3D vector and returns a projected 2D point */
+        Vec2 Project(const Vec3& point)
+        {
+            Vec2 projected_point = {
+                _fovFactor * point.x,
+                _fovFactor * point.y
+            };
+
+            return projected_point;
+        }
+
         void RenderColorBuffer()
         {
             SDL_UpdateTexture(_colorBufferTexture, nullptr, _colorBuffer.data(), WIDTH * sizeof(uint32_t));
@@ -175,8 +206,11 @@ class Engine
 
     private:
         std::array<uint32_t, WIDTH * HEIGHT> _colorBuffer;
-    
+        std::array<Vec3, 9*9*9> _cubePoints;
+        std::array<Vec2, 9*9*9> _projectedCubePoints;
+
         bool _isRunning = false;
+        uint32_t _fovFactor = 1;
 
         SDL_Window* _window;
         SDL_Renderer* _renderer;
