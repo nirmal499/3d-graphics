@@ -101,24 +101,26 @@ class Engine
     private:
     void DrawGrid()
         {
-            for(int y = 0; y < HEIGHT; y++)
-            {
-                for(int x = 0; x < WIDTH; x++)
-                {
-                    if(y % 10 == 0 || x % 10 == 0)
-                    {
-                        _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
-                    }
-                }
-            }
+            // for(int i = 0; i < WIDTH; i++)
+            // {
+            //     for(int j = 0; j < HEIGHT; j++)
+            //     {
+            //         if(i % 10 == 0 || j % 10 == 0)
+            //         {
+            //             // _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
+            //             DrawPixel(i, j, 0xFF333333);
+            //         }
+            //     }
+            // }
 
-            for(int y = 0; y < HEIGHT; y++)
+            for(int i = 0; i < WIDTH; i++)
             {
-                for(int x = 0; x < WIDTH; x++)
+                for(int j = 0; j < HEIGHT; j++)
                 {
-                    if(y % 10 == 0 && x % 10 == 0)
+                    if(i % 10 == 0 && j % 10 == 0)
                     {
-                        _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
+                        // _colorBuffer[(WIDTH * y) + x] = 0xFF333333;
+                        DrawPixel(i, j, 0xFF333333);
                     }
                 }
             }
@@ -134,15 +136,15 @@ class Engine
                 color is SDL_PIXELFORMAT_ARGB8888
             
             */
-            for(int y = 0; y < rectInfo[3]; y++)
+            for(int i = 0; i < rectInfo[2]; i++)
             {
-                for(int x = 0; x < rectInfo[2]; x++)
+                for(int j = 0; j < rectInfo[3]; j++)
                 {
-                    uint32_t current_x = rectInfo[0] + x;
-                    uint32_t current_y = rectInfo[1] + y;
+                    uint32_t current_x = rectInfo[0] + i;
+                    uint32_t current_y = rectInfo[1] + j;
                     
-                    _colorBuffer[(WIDTH * current_y) + current_x] = rectInfo[4];
-                    
+                    // _colorBuffer[(WIDTH * current_y) + current_x] = rectInfo[4];
+                    DrawPixel(current_x, current_y, rectInfo[4]);
                 }
             }
 
@@ -150,13 +152,19 @@ class Engine
 
         void FillColorBuffer(uint32_t color)
         {
-            for(int y = 0; y < HEIGHT; y++)
+            for(int i = 0; i < WIDTH; i++)
             {
-                for(int x = 0; x < WIDTH; x++)
+                for(int j = 0; j < HEIGHT; j++)
                 {
-                    _colorBuffer[(WIDTH * y) + x] = color;
+                    // _colorBuffer[(WIDTH * y) + x] = color;
+                    DrawPixel(i, j, color);
                 }
             }
+        }
+
+        void DrawPixel(int x, int y, uint32_t color)
+        {
+            _colorBuffer[(WIDTH * y) + x] = color;
         }
 
         void RenderColorBuffer()
