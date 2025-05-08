@@ -75,7 +75,7 @@ class Engine
 
                 point.z -= _cameraPosition.z;
 
-                // Project the current point
+                // Project the current point 
                 Vec2 projected_point = Project(point);
 
                 // Save the projected 2D vector in the array of the projected points
@@ -93,7 +93,7 @@ class Engine
             for(int i = 0; i < _projectedCubePoints.size(); i++)
             {
                 const Vec2& projected_point = _projectedCubePoints[i];
-                DrawRectangle({static_cast<uint32_t>(projected_point.x + (WIDTH/2.0)), static_cast<uint32_t>(projected_point.y + (HEIGHT/2.0)), 4, 4, 0xFFFFFF00});
+                DrawRectangle({static_cast<uint32_t>(projected_point.x), static_cast<uint32_t>(projected_point.y), 4, 4, 0xFFFFFF00});
             }
             
             RenderColorBuffer();
@@ -196,8 +196,8 @@ class Engine
         Vec2 Project(const Vec3& point)
         {
             Vec2 projected_point = {
-                (_fovFactor * point.x) / point.z,
-                (_fovFactor * point.y) / point.z
+                ((_fovFactor * point.x) / point.z) + (WIDTH/2.0f) ,
+                ((_fovFactor * point.y) / point.z) + (HEIGHT/2.0f)
             };
 
             return projected_point;
