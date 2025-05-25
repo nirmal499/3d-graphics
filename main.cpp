@@ -5,6 +5,10 @@
 #include <stdexcept>
 #include <memory>
 #include <array>
+#include <cmath>
+
+#define FPS 30
+#define FRAME_TARGET_TIME (1000 / FPS)
 
 struct Vec2
 {
@@ -18,6 +22,36 @@ struct Vec3
     float y;
     float z;
 };
+
+Vec3 vec3_rotate_x(const Vec3& v, float angle)
+{
+    Vec3 rotated_vector = {
+        .x = v.x,
+        .y = v.y * std::cos(angle) - v.z * std::sin(angle),
+        .z = v.y * std::sin(angle) + v.z * std::cos(angle)
+    };
+    return rotated_vector;
+}
+
+Vec3 vec3_rotate_y(const Vec3& v, float angle)
+{
+    Vec3 rotated_vector = {
+        .x = v.x * std::cos(angle) - v.z * std::sin(angle),
+        .y = v.y,
+        .z = v.x * std::sin(angle) + v.z * std::cos(angle)
+    };
+    return rotated_vector;
+}
+
+Vec3 vec3_rotate_z(const Vec3& v, float angle)
+{
+    Vec3 rotated_vector = {
+        .x = v.x * std::cos(angle) - v.y * std::sin(angle),
+        .y = v.x * std::sin(angle) + v.y * std::cos(angle),
+        .z = v.z
+    };
+    return rotated_vector;
+}
 
 template<uint32_t WIDTH, uint32_t HEIGHT>
 class Engine
@@ -69,14 +103,33 @@ class Engine
 
         void Update()
         {
+            _previous_frame_time = SDL_GetTicks();
+            /* Wait some time until it reach the target frame time in milliseconds */
+            int time_to_wait = FRAME_TARGET_TIME - (SDL_GetTicks() - _previous_frame_time);
+
+            /* Only delay execution if we are running too fast */
+            if(time_to_wait > 0 && time_to_wait <= FRAME_TARGET_TIME)
+            {
+                SDL_Delay(time_to_wait);
+            }
+
+            _cubeRotation.x += 0.01;
+            _cubeRotation.y += 0.01;
+            _cubeRotation.z += 0.01;
+
             for(int i = 0; i < _cubePoints.size(); i++)
             {
                 Vec3 point = _cubePoints[i];
 
-                point.z -= _cameraPosition.z;
+                /* Transforming our point */
+                Vec3 transformed_point = vec3_rotate_x(point, _cubeRotation.x);
+                transformed_point = vec3_rotate_y(transformed_point, _cubeRotation.y);
+                transformed_point = vec3_rotate_z(transformed_point, _cubeRotation.z);
 
-                // Project the current point 
-                Vec2 projected_point = Project(point);
+                transformed_point.z -= _cameraPosition.z;
+
+                // Project the current point
+                Vec2 projected_point = Project(transformed_point);
 
                 // Save the projected 2D vector in the array of the projected points
                 _projectedCubePoints[i] = std::move(projected_point);
@@ -215,12 +268,15 @@ class Engine
         std::array<Vec2, 9*9*9> _projectedCubePoints;
 
         bool _isRunning = false;
-        uint32_t _fovFactor = 128;
-        Vec3 _cameraPosition = {0, 0, -2};
+        uint32_t _fovFactor = 360;
+        Vec3 _cameraPosition = {0, 0, -5};
+        Vec3 _cubeRotation = {0, 0, 0};
 
         SDL_Window* _window;
         SDL_Renderer* _renderer;
         SDL_Texture* _colorBufferTexture;
+
+        int _previous_frame_time;
 };
 
 int main()
