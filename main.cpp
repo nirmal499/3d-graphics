@@ -10,6 +10,9 @@
 #define FPS 30
 #define FRAME_TARGET_TIME (1000 / FPS)
 
+#define MESH_VERTICES 8
+#define MESH_FACES (6 * 2) /* 6 cube face and 2 triangles per face */
+
 struct Vec2
 {
     float x;
@@ -21,6 +24,19 @@ struct Vec3
     float x;
     float y;
     float z;
+};
+
+/* It stores the indices */
+struct Face
+{
+    int a;
+    int b;
+    int c;
+};
+
+struct Triangle
+{
+    std::array<Vec2, 3> points;
 };
 
 Vec3 vec3_rotate_x(const Vec3& v, float angle)
@@ -103,7 +119,6 @@ class Engine
 
         void Update()
         {
-            _previous_frame_time = SDL_GetTicks();
             /* Wait some time until it reach the target frame time in milliseconds */
             int time_to_wait = FRAME_TARGET_TIME - (SDL_GetTicks() - _previous_frame_time);
 
@@ -113,27 +128,48 @@ class Engine
                 SDL_Delay(time_to_wait);
             }
 
+            _previous_frame_time = SDL_GetTicks();
+
             _cubeRotation.x += 0.01;
             _cubeRotation.y += 0.01;
             _cubeRotation.z += 0.01;
 
-            for(int i = 0; i < _cubePoints.size(); i++)
-            {
-                Vec3 point = _cubePoints[i];
+            /* Loop all triangle faces of our mesh */
+            for(int i = 0; i < MESH_FACES; i++)
+            {   
+                const Face& mesh_face = _mesh_faces[i];
 
-                /* Transforming our point */
-                Vec3 transformed_point = vec3_rotate_x(point, _cubeRotation.x);
-                transformed_point = vec3_rotate_y(transformed_point, _cubeRotation.y);
-                transformed_point = vec3_rotate_z(transformed_point, _cubeRotation.z);
+                Vec3 face_vertices[3];
+                face_vertices[0] = _mesh_vertices[mesh_face.a - 1];
+                face_vertices[1] = _mesh_vertices[mesh_face.b - 1];
+                face_vertices[2] = _mesh_vertices[mesh_face.c - 1];
 
-                transformed_point.z -= _cameraPosition.z;
+                Triangle projected_triangle;
+                
+                /* Loop all three vertices of this current face and apply transformations */
+                for(int j = 0; j < 3; j++)
+                {
+                    Vec3 transformed_vertex = face_vertices[j];
 
-                // Project the current point
-                Vec2 projected_point = Project(transformed_point);
+                    transformed_vertex = vec3_rotate_x(transformed_vertex, _cubeRotation.x);
+                    transformed_vertex = vec3_rotate_y(transformed_vertex, _cubeRotation.y);
+                    transformed_vertex = vec3_rotate_z(transformed_vertex, _cubeRotation.z);
+                    
+                    /* Translate the vertex away from the camera */
+                    transformed_vertex.z -= _cameraPosition.z;
 
-                // Save the projected 2D vector in the array of the projected points
-                _projectedCubePoints[i] = std::move(projected_point);
+                    /* Project the current point */
+                    Vec2 projected_point = Project(transformed_vertex);
 
+                    /* Scale and translate the projected points to the middle of the screen */
+                    projected_point.x += (WIDTH/2.0f);
+                    projected_point.y += (HEIGHT/2.0f);
+
+                    projected_triangle.points[j] = std::move(projected_point);
+                }
+
+                /* Save the projected triangle in the array of triangles to render */
+                _triangles_to_render[i] = std::move(projected_triangle);
             }
         }
 
@@ -143,10 +179,12 @@ class Engine
             // DrawGrid();
 
             // Loop all projected points and render them
-            for(int i = 0; i < _projectedCubePoints.size(); i++)
+            for(int i = 0; i < MESH_FACES; i++)
             {
-                const Vec2& projected_point = _projectedCubePoints[i];
-                DrawRectangle({static_cast<uint32_t>(projected_point.x), static_cast<uint32_t>(projected_point.y), 4, 4, 0xFFFFFF00});
+                const Triangle& triangle = _triangles_to_render[i];
+                DrawRectangle({static_cast<uint32_t>(triangle.points[0].x), static_cast<uint32_t>(triangle.points[0].y), 3, 3, 0xFFFFFF00});
+                DrawRectangle({static_cast<uint32_t>(triangle.points[1].x), static_cast<uint32_t>(triangle.points[1].y), 3, 3, 0xFFFFFF00});
+                DrawRectangle({static_cast<uint32_t>(triangle.points[2].x), static_cast<uint32_t>(triangle.points[2].y), 3, 3, 0xFFFFFF00});
             }
             
             RenderColorBuffer();
@@ -249,8 +287,8 @@ class Engine
         Vec2 Project(const Vec3& point)
         {
             Vec2 projected_point = {
-                ((_fovFactor * point.x) / point.z) + (WIDTH/2.0f) ,
-                ((_fovFactor * point.y) / point.z) + (HEIGHT/2.0f)
+                ((_fovFactor * point.x) / point.z),
+                ((_fovFactor * point.y) / point.z)
             };
 
             return projected_point;
@@ -268,7 +306,7 @@ class Engine
         std::array<Vec2, 9*9*9> _projectedCubePoints;
 
         bool _isRunning = false;
-        uint32_t _fovFactor = 360;
+        uint32_t _fovFactor = 640;
         Vec3 _cameraPosition = {0, 0, -5};
         Vec3 _cubeRotation = {0, 0, 0};
 
@@ -277,6 +315,41 @@ class Engine
         SDL_Texture* _colorBufferTexture;
 
         int _previous_frame_time;
+
+        std::array<Triangle, MESH_FACES> _triangles_to_render;
+
+        std::array<Vec3, MESH_VERTICES> _mesh_vertices = {
+            Vec3{ -1.0f, -1.0f, -1.0f }, // 1
+            Vec3{ -1.0f,  1.0f, -1.0f }, // 2
+            Vec3{  1.0f,  1.0f, -1.0f }, // 3
+            Vec3{  1.0f, -1.0f, -1.0f }, // 4
+            Vec3{  1.0f,  1.0f,  1.0f }, // 5
+            Vec3{  1.0f, -1.0f,  1.0f }, // 6
+            Vec3{ -1.0f,  1.0f,  1.0f }, // 7
+            Vec3{ -1.0f, -1.0f,  1.0f }  // 8
+        };
+
+        std::array<Face, MESH_FACES> _mesh_faces = {
+            
+            // front
+            Face{ 1, 2, 3 },
+            Face{ 1, 3, 4 },
+            // right
+            Face{ 4, 3, 5 },
+            Face{ 4, 5, 6 },
+            // back
+            Face{ 6, 5, 7 },
+            Face{ 6, 7, 8 },
+            // left
+            Face{ 8, 7, 2 },
+            Face{ 8, 2, 1 },
+            // top
+            Face{ 2, 7, 5 },
+            Face{ 2, 5, 3 },
+            // bottom
+            Face{ 6, 8, 1 },
+            Face{ 6, 1, 4 }
+        };
 };
 
 int main()
