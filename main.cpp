@@ -6,12 +6,13 @@
 #include <memory>
 #include <array>
 #include <cmath>
+#include <vector>
 
 #define FPS 30
 #define FRAME_TARGET_TIME (1000 / FPS)
 
-#define MESH_VERTICES 8
-#define MESH_FACES (6 * 2) /* 6 cube face and 2 triangles per face */
+#define CUBE_MESH_VERTICES 8
+#define CUBE_MESH_FACES (6 * 2) /* 6 cube face and 2 triangles per face */
 
 struct Vec2
 {
@@ -37,6 +38,13 @@ struct Face
 struct Triangle
 {
     std::array<Vec2, 3> points;
+};
+
+struct Mesh
+{
+    std::vector<Vec3> vertices;
+    std::vector<Face> faces;
+    Vec3 rotation; /* rotation with x, y and z values */
 };
 
 Vec3 vec3_rotate_x(const Vec3& v, float angle)
@@ -69,6 +77,8 @@ Vec3 vec3_rotate_z(const Vec3& v, float angle)
     return rotated_vector;
 }
 
+
+
 template<uint32_t WIDTH, uint32_t HEIGHT>
 class Engine
 {
@@ -83,17 +93,7 @@ class Engine
         {
             _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
-            int point_count = 0;
-            for(float x = -1; x <= 1; x += 0.25)
-            {
-                for(float y = -1; y <= 1; y += 0.25)
-                {
-                    for(float z = -1; z <= 1; z += 0.25)
-                    {
-                        _cubePoints[point_count++] = {x,y,z};
-                    }
-                }
-            }
+            LoadCubeMeshData();
         }
 
         void ProcessInput()
@@ -130,19 +130,19 @@ class Engine
 
             _previous_frame_time = SDL_GetTicks();
 
-            _cubeRotation.x += 0.01;
-            _cubeRotation.y += 0.01;
-            _cubeRotation.z += 0.01;
+            _mesh.rotation.x += 0.01;
+            _mesh.rotation.y += 0.01;
+            _mesh.rotation.z += 0.01;
 
             /* Loop all triangle faces of our mesh */
-            for(int i = 0; i < MESH_FACES; i++)
+            for(int i = 0; i < _mesh.faces.size(); i++)
             {   
-                const Face& mesh_face = _mesh_faces[i];
+                const Face& mesh_face = _mesh.faces[i];
 
                 Vec3 face_vertices[3];
-                face_vertices[0] = _mesh_vertices[mesh_face.a - 1];
-                face_vertices[1] = _mesh_vertices[mesh_face.b - 1];
-                face_vertices[2] = _mesh_vertices[mesh_face.c - 1];
+                face_vertices[0] = _mesh.vertices[mesh_face.a - 1];
+                face_vertices[1] = _mesh.vertices[mesh_face.b - 1];
+                face_vertices[2] = _mesh.vertices[mesh_face.c - 1];
 
                 Triangle projected_triangle;
                 
@@ -151,9 +151,9 @@ class Engine
                 {
                     Vec3 transformed_vertex = face_vertices[j];
 
-                    transformed_vertex = vec3_rotate_x(transformed_vertex, _cubeRotation.x);
-                    transformed_vertex = vec3_rotate_y(transformed_vertex, _cubeRotation.y);
-                    transformed_vertex = vec3_rotate_z(transformed_vertex, _cubeRotation.z);
+                    transformed_vertex = vec3_rotate_x(transformed_vertex, _mesh.rotation.x);
+                    transformed_vertex = vec3_rotate_y(transformed_vertex, _mesh.rotation.y);
+                    transformed_vertex = vec3_rotate_z(transformed_vertex, _mesh.rotation.z);
                     
                     /* Translate the vertex away from the camera */
                     transformed_vertex.z -= _cameraPosition.z;
@@ -169,7 +169,7 @@ class Engine
                 }
 
                 /* Save the projected triangle in the array of triangles to render */
-                _triangles_to_render[i] = std::move(projected_triangle);
+                _triangles_to_render.push_back(std::move(projected_triangle));
             }
         }
 
@@ -177,16 +177,32 @@ class Engine
         {
             FillColorBuffer(0xFF000000);
             // DrawGrid();
-
-            // Loop all projected points and render them
-            for(int i = 0; i < MESH_FACES; i++)
+            
+            // Loop all projected triangles and render them
+            for (int i = 0; i < _triangles_to_render.size(); i++)
             {
                 const Triangle& triangle = _triangles_to_render[i];
+
+                // Draw vertex points
                 DrawRectangle({static_cast<uint32_t>(triangle.points[0].x), static_cast<uint32_t>(triangle.points[0].y), 3, 3, 0xFFFFFF00});
                 DrawRectangle({static_cast<uint32_t>(triangle.points[1].x), static_cast<uint32_t>(triangle.points[1].y), 3, 3, 0xFFFFFF00});
                 DrawRectangle({static_cast<uint32_t>(triangle.points[2].x), static_cast<uint32_t>(triangle.points[2].y), 3, 3, 0xFFFFFF00});
+
+                // Draw unfilled triangle
+                DrawTriangle(
+                    triangle.points[0].x,
+                    triangle.points[0].y,
+                    triangle.points[1].x,
+                    triangle.points[1].y,
+                    triangle.points[2].x,
+                    triangle.points[2].y,
+                    0xFF00FF00
+                );
             }
-            
+
+            /* Clear the array of triangles to render every frame loop */
+            _triangles_to_render.clear(); /* Its .size() becomes but .capacity() is not changed */
+
             RenderColorBuffer();
             SDL_RenderPresent(_renderer);
         }
@@ -264,6 +280,33 @@ class Engine
 
         }
 
+        void DrawLine(int x0, int y0, int x1, int y1, uint32_t color)
+        {
+            int delta_x = (x1 - x0);
+            int delta_y = (y1 - y0);
+
+            int longest_side_length = (std::abs(delta_x) >= std::abs(delta_y)) ? std::abs(delta_x) : std::abs(delta_y);
+
+            float x_inc = delta_x / (float)longest_side_length; 
+            float y_inc = delta_y / (float)longest_side_length;
+
+            float current_x = x0;
+            float current_y = y0;
+            for (int i = 0; i <= longest_side_length; i++)
+            {
+                DrawPixel(std::round(current_x), std::round(current_y), color);
+                current_x += x_inc;
+                current_y += y_inc;
+            }
+        }
+
+        void DrawTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color)
+        {
+            DrawLine(x0, y0, x1, y1, color);
+            DrawLine(x1, y1, x2, y2, color);
+            DrawLine(x2, y2, x0, y0, color);
+        }
+
         void FillColorBuffer(uint32_t color)
         {
             for(int i = 0; i < WIDTH; i++)
@@ -300,15 +343,58 @@ class Engine
             SDL_RenderCopy(_renderer, _colorBufferTexture, nullptr, nullptr);
         }
 
+        void LoadCubeMeshData()
+        {
+            std::array<Vec3, CUBE_MESH_VERTICES> cube_mesh_vertices = {
+                Vec3{ -1.0f, -1.0f, -1.0f }, // 1
+                Vec3{ -1.0f,  1.0f, -1.0f }, // 2
+                Vec3{  1.0f,  1.0f, -1.0f }, // 3
+                Vec3{  1.0f, -1.0f, -1.0f }, // 4
+                Vec3{  1.0f,  1.0f,  1.0f }, // 5
+                Vec3{  1.0f, -1.0f,  1.0f }, // 6
+                Vec3{ -1.0f,  1.0f,  1.0f }, // 7
+                Vec3{ -1.0f, -1.0f,  1.0f }  // 8
+            };
+
+            std::array<Face, CUBE_MESH_FACES> cube_mesh_faces = {
+                
+                // front
+                Face{ 1, 2, 3 },
+                Face{ 1, 3, 4 },
+                // right
+                Face{ 4, 3, 5 },
+                Face{ 4, 5, 6 },
+                // back
+                Face{ 6, 5, 7 },
+                Face{ 6, 7, 8 },
+                // left
+                Face{ 8, 7, 2 },
+                Face{ 8, 2, 1 },
+                // top
+                Face{ 2, 7, 5 },
+                Face{ 2, 5, 3 },
+                // bottom
+                Face{ 6, 8, 1 },
+                Face{ 6, 1, 4 }
+            };
+
+            for(int i = 0; i < CUBE_MESH_VERTICES; i++)
+            {
+                _mesh.vertices.push_back(std::move(cube_mesh_vertices[i]));
+            }
+
+            for(int i = 0; i < CUBE_MESH_FACES; i++)
+            {
+                _mesh.faces.push_back(std::move(cube_mesh_faces[i]));
+            }
+        }
+
     private:
         std::array<uint32_t, WIDTH * HEIGHT> _colorBuffer;
-        std::array<Vec3, 9*9*9> _cubePoints;
-        std::array<Vec2, 9*9*9> _projectedCubePoints;
 
         bool _isRunning = false;
         uint32_t _fovFactor = 640;
         Vec3 _cameraPosition = {0, 0, -5};
-        Vec3 _cubeRotation = {0, 0, 0};
 
         SDL_Window* _window;
         SDL_Renderer* _renderer;
@@ -316,40 +402,8 @@ class Engine
 
         int _previous_frame_time;
 
-        std::array<Triangle, MESH_FACES> _triangles_to_render;
-
-        std::array<Vec3, MESH_VERTICES> _mesh_vertices = {
-            Vec3{ -1.0f, -1.0f, -1.0f }, // 1
-            Vec3{ -1.0f,  1.0f, -1.0f }, // 2
-            Vec3{  1.0f,  1.0f, -1.0f }, // 3
-            Vec3{  1.0f, -1.0f, -1.0f }, // 4
-            Vec3{  1.0f,  1.0f,  1.0f }, // 5
-            Vec3{  1.0f, -1.0f,  1.0f }, // 6
-            Vec3{ -1.0f,  1.0f,  1.0f }, // 7
-            Vec3{ -1.0f, -1.0f,  1.0f }  // 8
-        };
-
-        std::array<Face, MESH_FACES> _mesh_faces = {
-            
-            // front
-            Face{ 1, 2, 3 },
-            Face{ 1, 3, 4 },
-            // right
-            Face{ 4, 3, 5 },
-            Face{ 4, 5, 6 },
-            // back
-            Face{ 6, 5, 7 },
-            Face{ 6, 7, 8 },
-            // left
-            Face{ 8, 7, 2 },
-            Face{ 8, 2, 1 },
-            // top
-            Face{ 2, 7, 5 },
-            Face{ 2, 5, 3 },
-            // bottom
-            Face{ 6, 8, 1 },
-            Face{ 6, 1, 4 }
-        };
+        std::vector<Triangle> _triangles_to_render;
+        Mesh _mesh;
 };
 
 int main()
