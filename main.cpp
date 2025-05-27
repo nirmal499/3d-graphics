@@ -8,6 +8,7 @@
 #include <cmath>
 #include <vector>
 #include <fstream>
+#include <algorithm>
 #include <string>
 
 #define FPS 30
@@ -285,6 +286,14 @@ class Engine
                 DrawRectangle({static_cast<uint32_t>(triangle.points[1].x), static_cast<uint32_t>(triangle.points[1].y), 3, 3, 0xFFFFFF00});
                 DrawRectangle({static_cast<uint32_t>(triangle.points[2].x), static_cast<uint32_t>(triangle.points[2].y), 3, 3, 0xFFFFFF00});
 
+                // Draw filled triangle
+                DrawFilledTriangle(
+                    triangle.points[0].x, triangle.points[0].y, // vertex A
+                    triangle.points[1].x, triangle.points[1].y, // vertex B
+                    triangle.points[2].x, triangle.points[2].y, // vertex C
+                    0xFFFFFFFF
+                );
+
                 // Draw unfilled triangle
                 DrawTriangle(
                     triangle.points[0].x,
@@ -293,7 +302,7 @@ class Engine
                     triangle.points[1].y,
                     triangle.points[2].x,
                     triangle.points[2].y,
-                    0xFF00FF00
+                    0xFF000000
                 );
             }
 
@@ -438,6 +447,90 @@ class Engine
         {
             SDL_UpdateTexture(_colorBufferTexture, nullptr, _colorBuffer.data(), WIDTH * sizeof(uint32_t));
             SDL_RenderCopy(_renderer, _colorBufferTexture, nullptr, nullptr);
+        }
+
+        void FillFlatBottomTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color)
+        {
+            /* Find the two slopes (two triangle legs) */
+            float inv_slope_1 = (float)(x1 - x0) / (y1 - y0);
+            float inv_slope_2 = (float)(x2 - x0) / (y2 - y0);
+
+            /* Start x_start and x_end from the top vertex (x0,y0) */
+            float x_start = x0;
+            float x_end = x0;
+
+            /* Loop all the scanlines from top to bottom */
+            for (int y = y0; y <= y2; y++)
+            {
+                DrawLine(x_start, y, x_end, y, color);
+                x_start += inv_slope_1;
+                x_end += inv_slope_2;
+            }
+        }
+
+        void FillFlatTopTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color)
+        {
+            /* Find the two slopes (two triangle legs) */
+            float inv_slope_1 = (float)(x2 - x0) / (y2 - y0);
+            float inv_slope_2 = (float)(x2 - x1) / (y2 - y1);
+
+            /* Start x_start and x_end from the bottom vertex (x2,y2) */
+            float x_start = x2;
+            float x_end = x2;
+
+            /* Loop all the scanlines from bottom to top */
+            for (int y = y2; y >= y0; y--)
+            {
+                DrawLine(x_start, y, x_end, y, color);
+                x_start -= inv_slope_1;
+                x_end -= inv_slope_2;
+            }
+        }
+
+        void DrawFilledTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color)
+        {   
+            /* We need to sort the vertices by y-coordinate ascending (y0 < y1 < y2) */
+            SortInAscendingOrder(x0, y0, x1, y1, x2, y2);
+
+            if (y1 == y2)
+            {
+                /* Draw flat-bottom triangle */
+                FillFlatBottomTriangle(x0, y0, x1, y1, x2, y2, color);
+            }
+            else if (y0 == y1)
+            {
+                /* Draw flat-top triangle */
+                FillFlatTopTriangle(x0, y0, x1, y1, x2, y2, color);
+            }
+            else
+            {
+                /* Calculate the new vertex (Mx,My) using triangle similarity */
+                int My = y1;
+                int Mx = (((x2 - x0) * (y1 - y0)) / (y2 - y0)) + x0;
+
+                /* Draw flat-bottom triangle */
+                FillFlatBottomTriangle(x0, y0, x1, y1, Mx, My, color);
+
+                /* Draw flat-top triangle */
+                FillFlatTopTriangle(x1, y1, Mx, My, x2, y2, color);
+            }
+        }
+
+        void SortInAscendingOrder(int& x0, int& y0, int& x1, int& y1, int& x2, int& y2)
+        {
+            std::array<std::pair<int, int>, 3> points = {
+                std::make_pair(x0, y0),
+                std::make_pair(x1, y1),
+                std::make_pair(x2, y2),
+            };
+
+            std::sort(points.begin(), points.end(), [](const std::pair<int, int>& a, const std::pair<int, int>& b){
+                return a.second < b.second; /* compare by y value */
+            });
+
+            x0 = points[0].first; y0 = points[0].second;
+            x1 = points[1].first; y1 = points[1].second;
+            x2 = points[2].first; y2 = points[2].second;
         }
 
         void LoadCubeMeshData()
