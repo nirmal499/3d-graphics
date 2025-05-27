@@ -49,12 +49,77 @@ struct Mesh
     Vec3 rotation; /* rotation with x, y and z values */
 };
 
+float vec3_length(const Vec3& v)
+{
+    return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+Vec3 vec3_add(const Vec3& a, const Vec3& b)
+{
+    Vec3 result = {
+        a.x + b.x,
+        a.y + b.y,
+        a.z + b.z
+    };
+    return result;
+}
+
+Vec3 vec3_sub(const Vec3& a, const Vec3& b)
+{
+    Vec3 result = {
+        a.x - b.x,
+        a.y - b.y,
+        a.z - b.z
+    };
+    return result;
+}
+
+Vec3 vec3_mul(const Vec3& v, float factor)
+{
+    Vec3 result = {
+        v.x * factor,
+        v.y * factor,
+        v.z * factor
+    };
+    return result;
+}
+
+Vec3 vec3_div(const Vec3& v, float factor)
+{
+    if(factor == 0)
+    {
+        throw std::runtime_error("Division by 0");
+    }
+
+    Vec3 result = {
+        v.x / factor,
+        v.y / factor,
+        v.z / factor
+    };
+    return result;
+}
+
+Vec3 vec3_cross(const Vec3& a, const Vec3& b)
+{
+    Vec3 result = {
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    };
+    return result;
+}
+
+float vec3_dot(const Vec3& a, const Vec3& b)
+{
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
 Vec3 vec3_rotate_x(const Vec3& v, float angle)
 {
     Vec3 rotated_vector = {
-        .x = v.x,
-        .y = v.y * std::cos(angle) - v.z * std::sin(angle),
-        .z = v.y * std::sin(angle) + v.z * std::cos(angle)
+        v.x,
+        v.y * std::cos(angle) - v.z * std::sin(angle),
+        v.y * std::sin(angle) + v.z * std::cos(angle)
     };
     return rotated_vector;
 }
@@ -62,9 +127,9 @@ Vec3 vec3_rotate_x(const Vec3& v, float angle)
 Vec3 vec3_rotate_y(const Vec3& v, float angle)
 {
     Vec3 rotated_vector = {
-        .x = v.x * std::cos(angle) - v.z * std::sin(angle),
-        .y = v.y,
-        .z = v.x * std::sin(angle) + v.z * std::cos(angle)
+        v.x * std::cos(angle) - v.z * std::sin(angle),
+        v.y,
+        v.x * std::sin(angle) + v.z * std::cos(angle)
     };
     return rotated_vector;
 }
@@ -72,14 +137,12 @@ Vec3 vec3_rotate_y(const Vec3& v, float angle)
 Vec3 vec3_rotate_z(const Vec3& v, float angle)
 {
     Vec3 rotated_vector = {
-        .x = v.x * std::cos(angle) - v.y * std::sin(angle),
-        .y = v.x * std::sin(angle) + v.y * std::cos(angle),
-        .z = v.z
+        v.x * std::cos(angle) - v.y * std::sin(angle),
+        v.x * std::sin(angle) + v.y * std::cos(angle),
+        v.z
     };
     return rotated_vector;
 }
-
-
 
 template<uint32_t WIDTH, uint32_t HEIGHT>
 class Engine
@@ -147,8 +210,7 @@ class Engine
                 face_vertices[1] = _mesh.vertices[mesh_face.b - 1];
                 face_vertices[2] = _mesh.vertices[mesh_face.c - 1];
 
-                Triangle projected_triangle;
-                
+                Vec3 transformed_vertices[3];
                 /* Loop all three vertices of this current face and apply transformations */
                 for(int j = 0; j < 3; j++)
                 {
@@ -159,10 +221,42 @@ class Engine
                     transformed_vertex = vec3_rotate_z(transformed_vertex, _mesh.rotation.z);
                     
                     /* Translate the vertex away from the camera */
-                    transformed_vertex.z -= _cameraPosition.z;
+                    transformed_vertex.z -= -5;
 
+                    /* Save transformed vertex in the array of transformed vertices */
+                    transformed_vertices[j] = std::move(transformed_vertex);
+                }
+
+                /* Check backface culling */
+                const Vec3& vector_a = transformed_vertices[0];
+                const Vec3& vector_b = transformed_vertices[1];
+                const Vec3& vector_c = transformed_vertices[2];
+
+                /* Get the vector subtraction of B-A and C-A */
+                Vec3 vector_ab = vec3_sub(vector_b, vector_a);
+                Vec3 vector_ac = vec3_sub(vector_c, vector_a);
+
+                /* Compute the face normal (using cross product to find perpendicular) */
+                Vec3 normal = vec3_cross(vector_ab, vector_ac);
+
+                /* Find the vector between a point in the triangle and the camera origin */
+                Vec3 camera_ray = vec3_sub(_cameraPosition, vector_a);
+
+                /* Calculate how aligned the camera ray is with the face normal (using dot product) */
+                float dot_normal_camera = vec3_dot(normal, camera_ray);
+
+                /* Bypass the triangles that are looking away from the camera */
+                if(dot_normal_camera < 0)
+                {
+                    /* Skip the current face (aka triangle) */
+                    continue;
+                }
+
+                Triangle projected_triangle;
+                for(int j = 0; j < 3; j++)
+                {
                     /* Project the current point */
-                    Vec2 projected_point = Project(transformed_vertex);
+                    Vec2 projected_point = Project(transformed_vertices[j]);
 
                     /* Scale and translate the projected points to the middle of the screen */
                     projected_point.x += (WIDTH/2.0f);
@@ -437,7 +531,7 @@ class Engine
 
         bool _isRunning = false;
         uint32_t _fovFactor = 640;
-        Vec3 _cameraPosition = {0, 0, -5};
+        Vec3 _cameraPosition = {0, 0, 0};
 
         SDL_Window* _window;
         SDL_Renderer* _renderer;
