@@ -7,6 +7,8 @@
 #include <array>
 #include <cmath>
 #include <vector>
+#include <fstream>
+#include <string>
 
 #define FPS 30
 #define FRAME_TARGET_TIME (1000 / FPS)
@@ -93,7 +95,8 @@ class Engine
         {
             _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
-            LoadCubeMeshData();
+            // LoadCubeMeshData();
+            LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.obj");
         }
 
         void ProcessInput()
@@ -387,6 +390,46 @@ class Engine
             {
                 _mesh.faces.push_back(std::move(cube_mesh_faces[i]));
             }
+        }
+
+        void LoadObjFileData(const char* filename)
+        {
+            std::ifstream infile(filename);
+            if(!infile.is_open())
+            {
+                throw std::runtime_error("Unable to open OBJ file");
+            }
+
+            std::string line;
+            while(std::getline(infile, line, '\n'))
+            {
+                /* Vertex information */
+                if(line.find("v ") == 0)
+                {
+                    Vec3 vertex;
+                    sscanf(line.data(), "v %f %f %f", &vertex.x, &vertex.y, &vertex.z);
+                    _mesh.vertices.push_back(std::move(vertex));
+                }
+
+                /* Face information */
+                if(line.find("f ") == 0)
+                {
+                    int vertex_indices[3];
+                    int texture_indices[3];
+                    int normal_indices[3];
+
+                    sscanf(
+                        line.data(), "f %d/%d/%d %d/%d/%d %d/%d/%d",
+                        &vertex_indices[0], &texture_indices[0], &normal_indices[0], 
+                        &vertex_indices[1], &texture_indices[1], &normal_indices[1], 
+                        &vertex_indices[2], &texture_indices[2], &normal_indices[2]
+                    ); 
+
+                    Face face{vertex_indices[0], vertex_indices[1], vertex_indices[2]};
+                    _mesh.faces.push_back(std::move(face));
+                }
+            }
+
         }
 
     private:
