@@ -160,7 +160,7 @@ class Engine
             _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
             // LoadCubeMeshData();
-            LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.obj");
+            LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\f22.obj");
         }
 
         void ProcessInput()
@@ -197,9 +197,9 @@ class Engine
 
             _previous_frame_time = SDL_GetTicks();
 
-            _mesh.rotation.x += 0.01;
-            _mesh.rotation.y += 0.01;
-            _mesh.rotation.z += 0.01;
+            _mesh.rotation.x += 0.00;
+            _mesh.rotation.y += 0.00;
+            _mesh.rotation.z += 0.00;
 
             /* Loop all triangle faces of our mesh */
             for(int i = 0; i < _mesh.faces.size(); i++)
@@ -258,6 +258,9 @@ class Engine
                 {
                     /* Project the current point */
                     Vec2 projected_point = Project(transformed_vertices[j]);
+                    
+                    /* Invert the y values to account for flipped screen y coordinate */
+                    projected_point.y *= -1;
 
                     /* Scale and translate the projected points to the middle of the screen */
                     projected_point.x += (WIDTH/2.0f);
@@ -462,7 +465,17 @@ class Engine
             /* Loop all the scanlines from top to bottom */
             for (int y = y0; y <= y2; y++)
             {
-                DrawLine(x_start, y, x_end, y, color);
+                // DrawLine(std::round(x_start), y, std::round(x_end), y, color);
+                int xs = std::round(x_start);
+                int xe = std::round(x_end);
+                if (xs > xe)
+                {
+                    std::swap(xs, xe);
+                }
+                for (int x = xs; x <= xe; x++)
+                {
+                    DrawPixel(x, y, color);
+                }
                 x_start += inv_slope_1;
                 x_end += inv_slope_2;
             }
@@ -481,7 +494,17 @@ class Engine
             /* Loop all the scanlines from bottom to top */
             for (int y = y2; y >= y0; y--)
             {
-                DrawLine(x_start, y, x_end, y, color);
+                // DrawLine(std::round(x_start), y, std::round(x_end), y, color);
+                int xs = std::round(x_start);
+                int xe = std::round(x_end);
+                if (xs > xe)
+                {
+                    std::swap(xs, xe);
+                }
+                for (int x = xs; x <= xe; x++)
+                {
+                    DrawPixel(x, y, color);
+                }
                 x_start -= inv_slope_1;
                 x_end -= inv_slope_2;
             }
