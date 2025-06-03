@@ -10,6 +10,7 @@
 #include <fstream>
 #include <algorithm>
 #include <string>
+#include <iostream>
 
 #define FPS 30
 #define FRAME_TARGET_TIME (1000 / FPS)
@@ -30,17 +31,32 @@ struct Vec3
     float z;
 };
 
+struct Vec4
+{
+    float x;
+    float y;
+    float z;
+    float w;
+};
+
+struct Mat4
+{
+    float m[4][4];
+};
+
 /* It stores the indices */
 struct Face
 {
     int a;
     int b;
     int c;
+    uint32_t color;
 };
 
 struct Triangle
 {
     std::array<Vec2, 3> points;
+    uint32_t color;
 };
 
 struct Mesh
@@ -48,7 +64,29 @@ struct Mesh
     std::vector<Vec3> vertices;
     std::vector<Face> faces;
     Vec3 rotation; /* rotation with x, y and z values */
+    Vec3 scale;
+    Vec3 translation;
 };
+
+struct Light
+{
+    Vec3 direction;
+};
+
+uint32_t light_apply_intensity(uint32_t original_color, float percentage_factor)
+{
+    if (percentage_factor < 0) percentage_factor = 0;
+    if (percentage_factor > 1) percentage_factor = 1;
+
+    uint32_t a = (original_color & 0xFF000000);
+    uint32_t r = (original_color & 0x00FF0000) * percentage_factor;
+    uint32_t g = (original_color & 0x0000FF00) * percentage_factor;
+    uint32_t b = (original_color & 0x000000FF) * percentage_factor;
+
+    uint32_t new_color = a | (r & 0x00FF0000) | (g & 0x0000FF00) | (b & 0x000000FF);
+
+    return new_color;
+}
 
 float vec3_length(const Vec3& v)
 {
@@ -145,6 +183,168 @@ Vec3 vec3_rotate_z(const Vec3& v, float angle)
     return rotated_vector;
 }
 
+void vec3_normalize(Vec3& v)
+{
+    float length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    v.x /= length;
+    v.y /= length;
+    v.z /= length;
+}
+
+Mat4 mat4_identity(void)
+{
+    // | 1 0 0 0 |
+    // | 0 1 0 0 |
+    // | 0 0 1 0 |
+    // | 0 0 0 1 |
+    Mat4 m = {{
+        { 1, 0, 0, 0 },
+        { 0, 1, 0, 0 },
+        { 0, 0, 1, 0 },
+        { 0, 0, 0, 1 }
+    }};
+    return m;
+}
+
+Mat4 mat4_make_scale(float sx, float sy, float sz)
+{
+    // | sx  0  0  0 |
+    // |  0 sy  0  0 |
+    // |  0  0 sz  0 |
+    // |  0  0  0  1 |
+    Mat4 m = mat4_identity();
+    m.m[0][0] = sx;
+    m.m[1][1] = sy;
+    m.m[2][2] = sz;
+    return m;
+}
+
+Mat4 mat4_make_translation(float tx, float ty, float tz)
+{
+    // | 1  0  0  tx |
+    // | 0  1  0  ty |
+    // | 0  0  1  tz |
+    // | 0  0  0  1  |
+    Mat4 m = mat4_identity();
+    m.m[0][3] = tx;
+    m.m[1][3] = ty;
+    m.m[2][3] = tz;
+    return m;
+}
+
+Mat4 mat4_make_rotation_x(float angle)
+{
+    float c = std::cos(angle);
+    float s = std::sin(angle);
+    // | 1  0  0  0 |
+    // | 0  c -s  0 |
+    // | 0  s  c  0 |
+    // | 0  0  0  1 |
+    Mat4 m = mat4_identity();
+    m.m[1][1] = c;
+    m.m[1][2] = -s;
+    m.m[2][1] = s;
+    m.m[2][2] = c;
+    return m;
+}
+
+Mat4 mat4_make_rotation_y(float angle)
+{
+    float c = std::cos(angle);
+    float s = std::sin(angle);
+    // |  c  0  s  0 |
+    // |  0  1  0  0 |
+    // | -s  0  c  0 |
+    // |  0  0  0  1 |
+    Mat4 m = mat4_identity();
+    m.m[0][0] = c;
+    m.m[0][2] = s;
+    m.m[2][0] = -s;
+    m.m[2][2] = c;
+    return m;
+}
+
+Mat4 mat4_make_rotation_z(float angle)
+{
+    float c = std::cos(angle);
+    float s = std::sin(angle);
+    // | c -s  0  0 |
+    // | s  c  0  0 |
+    // | 0  0  1  0 |
+    // | 0  0  0  1 |
+    Mat4 m = mat4_identity();
+    m.m[0][0] = c;
+    m.m[0][1] = -s;
+    m.m[1][0] = s;
+    m.m[1][1] = c;
+    return m;
+}
+
+Vec4 mat4_mul_vec4(const Mat4& m, const Vec4& v)
+{
+    Vec4 result;
+    result.x = m.m[0][0] * v.x + m.m[0][1] * v.y + m.m[0][2] * v.z + m.m[0][3] * v.w;
+    result.y = m.m[1][0] * v.x + m.m[1][1] * v.y + m.m[1][2] * v.z + m.m[1][3] * v.w;
+    result.z = m.m[2][0] * v.x + m.m[2][1] * v.y + m.m[2][2] * v.z + m.m[2][3] * v.w;
+    result.w = m.m[3][0] * v.x + m.m[3][1] * v.y + m.m[3][2] * v.z + m.m[3][3] * v.w;
+    return result;
+}
+
+Mat4 mat4_mul_mat4(const Mat4& a, const Mat4& b)
+{
+    Mat4 m;
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            m.m[i][j] = a.m[i][0] * b.m[0][j] + a.m[i][1] * b.m[1][j] + a.m[i][2] * b.m[2][j] + a.m[i][3] * b.m[3][j];
+        }
+    }
+    return m;
+}
+
+Mat4 mat4_make_perspective(float fov, float aspect, float znear, float zfar)
+{
+    // | (h/w)*1/tan(fov/2)             0              0                 0 |
+    // |                  0  1/tan(fov/2)              0                 0 |
+    // |                  0             0     zf/(zf-zn)  (-zf*zn)/(zf-zn) |
+    // |                  0             0              1                 0 |
+    Mat4 m = {{{ 0 }}};
+    m.m[0][0] = aspect * (1 / std::tan(fov / 2));
+    m.m[1][1] = 1 / std::tan(fov / 2);
+    m.m[2][2] = zfar / (zfar - znear);
+    m.m[2][3] = (-zfar * znear) / (zfar - znear);
+    m.m[3][2] = 1.0;
+    return m;
+}
+
+Vec4 mat4_mul_vec4_project(const Mat4& mat_proj, const Vec4& v)
+{
+    // multiply the projection matrix by our original vector
+    Vec4 result = mat4_mul_vec4(mat_proj, v);
+
+    // perform perspective divide with original z-value that is now stored in w
+    if (result.w != 0.0)
+    {
+        result.x /= result.w;
+        result.y /= result.w;
+        result.z /= result.w;
+    }
+    return result;
+}
+
+Vec4 vec4_from_vec3(const Vec3& v)
+{
+    Vec4 result = { v.x, v.y, v.z, 1.0 };
+    return result;
+}
+
+Vec3 vec3_from_vec4(const Vec4& v)
+{
+    Vec3 result = { v.x, v.y, v.z };
+    return result;
+}
+
 template<uint32_t WIDTH, uint32_t HEIGHT>
 class Engine
 {
@@ -159,8 +359,23 @@ class Engine
         {
             _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
+
+            // Initialize the perspective projection matrix
+            float fov = M_PI / 3.0; // the same as 180/3, or 60deg
+            float aspect = (float)(WIDTH) / (float)(HEIGHT);
+            float znear = 0.1;
+            float zfar = 100.0;
+            _proj_matrix = mat4_make_perspective(fov, aspect, znear, zfar);
+
+            _mesh.rotation = Vec3{0.0, 0.0, 0.0};
+            _mesh.scale = Vec3{1.0, 1.0, 1.0};
+            _mesh.translation = Vec3{0.0, 0.0, 0.0};
+
+            _light.direction = Vec3{0.0, 0.0, 1.0};
+
             // LoadCubeMeshData();
-            LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\f22.obj");
+            // LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\f22.obj");
+            LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.obj");
         }
 
         void ProcessInput()
@@ -199,9 +414,22 @@ class Engine
             _delta_time = (SDL_GetTicks() - _previous_frame_time) / 1000.0f;
             _previous_frame_time = SDL_GetTicks();
 
-            _mesh.rotation.x += 0.05 * _delta_time;
-            _mesh.rotation.y += 0.05 * _delta_time;
-            _mesh.rotation.z += 0.05 * _delta_time;
+            _mesh.rotation.x += 0.5 * _delta_time;
+            _mesh.rotation.y += 0.5 * _delta_time;
+            _mesh.rotation.z += 0.5 * _delta_time;
+
+            // _mesh.scale.x += 0.1 * _delta_time;
+            // _mesh.scale.y += 0.1 * _delta_time;
+
+            // _mesh.translation.x += 0.1 * _delta_time;
+            _mesh.translation.z = 5.0;
+
+            // Create scale, rotation, and translation matrices that will be used to multiply the mesh vertices
+            Mat4 scale_matrix = mat4_make_scale(_mesh.scale.x, _mesh.scale.y, _mesh.scale.z);
+            Mat4 translation_matrix = mat4_make_translation(_mesh.translation.x, _mesh.translation.y, _mesh.translation.z);
+            Mat4 rotation_matrix_x = mat4_make_rotation_x(_mesh.rotation.x);
+            Mat4 rotation_matrix_y = mat4_make_rotation_y(_mesh.rotation.y);
+            Mat4 rotation_matrix_z = mat4_make_rotation_z(_mesh.rotation.z);
 
             /* Loop all triangle faces of our mesh */
             for(int i = 0; i < _mesh.faces.size(); i++)
@@ -213,34 +441,43 @@ class Engine
                 face_vertices[1] = _mesh.vertices[mesh_face.b - 1];
                 face_vertices[2] = _mesh.vertices[mesh_face.c - 1];
 
-                Vec3 transformed_vertices[3];
+                Vec4 transformed_vertices[3];
                 /* Loop all three vertices of this current face and apply transformations */
                 for(int j = 0; j < 3; j++)
                 {
-                    Vec3 transformed_vertex = face_vertices[j];
+                    Vec4 transformed_vertex = vec4_from_vec3(face_vertices[j]);
 
-                    transformed_vertex = vec3_rotate_x(transformed_vertex, _mesh.rotation.x);
-                    transformed_vertex = vec3_rotate_y(transformed_vertex, _mesh.rotation.y);
-                    transformed_vertex = vec3_rotate_z(transformed_vertex, _mesh.rotation.z);
+                    /* Create a World Matrix combining scale, rotation, and translation matrices */
+                    Mat4 world_matrix = mat4_identity();
+
+                    /* Order matters: First scale, then rotate, then translate. [T]*[R]*[S]*v */
+                    world_matrix = mat4_mul_mat4(scale_matrix, world_matrix);
+                    world_matrix = mat4_mul_mat4(rotation_matrix_z, world_matrix);
+                    world_matrix = mat4_mul_mat4(rotation_matrix_y, world_matrix);
+                    world_matrix = mat4_mul_mat4(rotation_matrix_x, world_matrix);
+                    world_matrix = mat4_mul_mat4(translation_matrix, world_matrix);
+
+                    /* Multiply the world matrix by the original vector */
+                    transformed_vertex = mat4_mul_vec4(world_matrix, transformed_vertex);
                     
-                    /* Translate the vertex away from the camera */
-                    transformed_vertex.z -= -5;
-
                     /* Save transformed vertex in the array of transformed vertices */
-                    transformed_vertices[j] = std::move(transformed_vertex);
+                    transformed_vertices[j] = transformed_vertex;
                 }
 
                 /* Check backface culling */
-                const Vec3& vector_a = transformed_vertices[0];
-                const Vec3& vector_b = transformed_vertices[1];
-                const Vec3& vector_c = transformed_vertices[2];
+                Vec3 vector_a = vec3_from_vec4(transformed_vertices[0]);
+                Vec3 vector_b = vec3_from_vec4(transformed_vertices[1]);
+                Vec3 vector_c = vec3_from_vec4(transformed_vertices[2]);
 
                 /* Get the vector subtraction of B-A and C-A */
                 Vec3 vector_ab = vec3_sub(vector_b, vector_a);
                 Vec3 vector_ac = vec3_sub(vector_c, vector_a);
+                vec3_normalize(vector_ab);
+                vec3_normalize(vector_ac);
 
                 /* Compute the face normal (using cross product to find perpendicular) */
                 Vec3 normal = vec3_cross(vector_ab, vector_ac);
+                vec3_normalize(normal);
 
                 /* Find the vector between a point in the triangle and the camera origin */
                 Vec3 camera_ray = vec3_sub(_cameraPosition, vector_a);
@@ -255,21 +492,39 @@ class Engine
                     continue;
                 }
 
-                Triangle projected_triangle;
+                // Triangle projected_triangle;
+                Vec4 projected_points[3];
                 for(int j = 0; j < 3; j++)
                 {
                     /* Project the current point */
-                    Vec2 projected_point = Project(transformed_vertices[j]);
+                    projected_points[j] = mat4_mul_vec4_project(_proj_matrix, transformed_vertices[j]);
                     
                     /* Invert the y values to account for flipped screen y coordinate */
-                    projected_point.y *= -1;
+                    projected_points[j].y *= -1;
 
-                    /* Scale and translate the projected points to the middle of the screen */
-                    projected_point.x += (WIDTH/2.0f);
-                    projected_point.y += (HEIGHT/2.0f);
+                    /* Scale the projected points into the view so that we can see properly */
+                    projected_points[j].x *= (WIDTH/2.0f);
+                    projected_points[j].y *= (HEIGHT/2.0f);
 
-                    projected_triangle.points[j] = std::move(projected_point);
+                    /* Translate the projected points to the middle of the screen */
+                    projected_points[j].x += (WIDTH/2.0f);
+                    projected_points[j].y += (HEIGHT/2.0f);
                 }
+
+                /* Calculate the shade intensity based on how aliged is the face normal and the opposite of the light direction */
+                float light_intensity_factor = -vec3_dot(normal, _light.direction);
+
+                /* Calculate the triangle color based on the light angle */
+                uint32_t triangle_color = light_apply_intensity(mesh_face.color, light_intensity_factor);
+
+                Triangle projected_triangle = Triangle{
+                    {
+                        Vec2{ projected_points[0].x, projected_points[0].y},
+                        Vec2{ projected_points[1].x, projected_points[1].y},
+                        Vec2{ projected_points[2].x, projected_points[2].y},
+                    }, 
+                    triangle_color
+                };
 
                 /* Save the projected triangle in the array of triangles to render */
                 _triangles_to_render.push_back(std::move(projected_triangle));
@@ -279,7 +534,7 @@ class Engine
         void Render()
         {
             FillColorBuffer(0xFF000000);
-            // DrawGrid();
+            DrawGrid();
             
             // Loop all projected triangles and render them
             for (int i = 0; i < _triangles_to_render.size(); i++)
@@ -287,28 +542,28 @@ class Engine
                 const Triangle& triangle = _triangles_to_render[i];
 
                 // Draw vertex points
-                DrawRectangle({static_cast<uint32_t>(triangle.points[0].x), static_cast<uint32_t>(triangle.points[0].y), 3, 3, 0xFFFFFF00});
-                DrawRectangle({static_cast<uint32_t>(triangle.points[1].x), static_cast<uint32_t>(triangle.points[1].y), 3, 3, 0xFFFFFF00});
-                DrawRectangle({static_cast<uint32_t>(triangle.points[2].x), static_cast<uint32_t>(triangle.points[2].y), 3, 3, 0xFFFFFF00});
+                // DrawRectangle({static_cast<uint32_t>(triangle.points[0].x), static_cast<uint32_t>(triangle.points[0].y), 3, 3, 0xFFFFFF00});
+                // DrawRectangle({static_cast<uint32_t>(triangle.points[1].x), static_cast<uint32_t>(triangle.points[1].y), 3, 3, 0xFFFFFF00});
+                // DrawRectangle({static_cast<uint32_t>(triangle.points[2].x), static_cast<uint32_t>(triangle.points[2].y), 3, 3, 0xFFFFFF00});
 
                 // Draw filled triangle
                 DrawFilledTriangle(
                     triangle.points[0].x, triangle.points[0].y, // vertex A
                     triangle.points[1].x, triangle.points[1].y, // vertex B
                     triangle.points[2].x, triangle.points[2].y, // vertex C
-                    0xFFFFFFFF
+                    triangle.color
                 );
 
                 // Draw unfilled triangle
-                DrawTriangle(
-                    triangle.points[0].x,
-                    triangle.points[0].y,
-                    triangle.points[1].x,
-                    triangle.points[1].y,
-                    triangle.points[2].x,
-                    triangle.points[2].y,
-                    0xFF000000
-                );
+                // DrawTriangle(
+                //     triangle.points[0].x,
+                //     triangle.points[0].y,
+                //     triangle.points[1].x,
+                //     triangle.points[1].y,
+                //     triangle.points[2].x,
+                //     triangle.points[2].y,
+                //     triangle.color
+                // );
             }
 
             /* Clear the array of triangles to render every frame loop */
@@ -359,7 +614,7 @@ class Engine
                 {
                     for(int j = 0; j < HEIGHT; j++)
                     {
-                        if(i % 10 == 0 || j % 10 == 0)
+                        if(i % 10 == 0 && j % 10 == 0)
                         {
                             DrawPixel(i, j, 0xFF333333);
                         }
@@ -574,23 +829,23 @@ class Engine
             std::array<Face, CUBE_MESH_FACES> cube_mesh_faces = {
                 
                 // front
-                Face{ 1, 2, 3 },
-                Face{ 1, 3, 4 },
+                Face{ 1, 2, 3, 0xFFFFFFFF},
+                Face{ 1, 3, 4, 0xFFFFFFFF},
                 // right
-                Face{ 4, 3, 5 },
-                Face{ 4, 5, 6 },
+                Face{ 4, 3, 5, 0xFFFFFFFF},
+                Face{ 4, 5, 6, 0xFFFFFFFF},
                 // back
-                Face{ 6, 5, 7 },
-                Face{ 6, 7, 8 },
+                Face{ 6, 5, 7, 0xFFFFFFFF},
+                Face{ 6, 7, 8, 0xFFFFFFFF},
                 // left
-                Face{ 8, 7, 2 },
-                Face{ 8, 2, 1 },
+                Face{ 8, 7, 2, 0xFFFFFFFF},
+                Face{ 8, 2, 1, 0xFFFFFFFF},
                 // top
-                Face{ 2, 7, 5 },
-                Face{ 2, 5, 3 },
+                Face{ 2, 7, 5, 0xFFFFFFFF},
+                Face{ 2, 5, 3, 0xFFFFFFFF},
                 // bottom
-                Face{ 6, 8, 1 },
-                Face{ 6, 1, 4 }
+                Face{ 6, 8, 1, 0xFFFFFFFF},
+                Face{ 6, 1, 4, 0xFFFFFFFF}
             };
 
             for(int i = 0; i < CUBE_MESH_VERTICES; i++)
@@ -637,7 +892,7 @@ class Engine
                         &vertex_indices[2], &texture_indices[2], &normal_indices[2]
                     ); 
 
-                    Face face{vertex_indices[0], vertex_indices[1], vertex_indices[2]};
+                    Face face{vertex_indices[0], vertex_indices[1], vertex_indices[2], 0xFFFFFFFF};
                     _mesh.faces.push_back(std::move(face));
                 }
             }
@@ -646,6 +901,8 @@ class Engine
 
     private:
         std::array<uint32_t, WIDTH * HEIGHT> _colorBuffer;
+        Mat4 _proj_matrix;
+        Light _light;
 
         bool _isRunning = false;
         uint32_t _fovFactor = 640;
