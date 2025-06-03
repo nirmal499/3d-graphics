@@ -195,11 +195,13 @@ class Engine
                 SDL_Delay(time_to_wait);
             }
 
+            /* Get a delta time factor converted to seconds to be used to update our game object */
+            _delta_time = (SDL_GetTicks() - _previous_frame_time) / 1000.0f;
             _previous_frame_time = SDL_GetTicks();
 
-            _mesh.rotation.x += 0.00;
-            _mesh.rotation.y += 0.00;
-            _mesh.rotation.z += 0.00;
+            _mesh.rotation.x += 0.05 * _delta_time;
+            _mesh.rotation.y += 0.05 * _delta_time;
+            _mesh.rotation.z += 0.05 * _delta_time;
 
             /* Loop all triangle faces of our mesh */
             for(int i = 0; i < _mesh.faces.size(); i++)
@@ -653,7 +655,8 @@ class Engine
         SDL_Renderer* _renderer;
         SDL_Texture* _colorBufferTexture;
 
-        int _previous_frame_time;
+        int _previous_frame_time = 0;
+        float _delta_time = 0;
 
         std::vector<Triangle> _triangles_to_render;
         Mesh _mesh;
