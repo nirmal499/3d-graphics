@@ -67,7 +67,7 @@ struct Face
 
 struct Triangle
 {
-    std::array<Vec2, 3> points;
+    std::array<Vec4, 3> points;
     std::array<Tex2, 3> texcoords;
     uint32_t color;
 };
@@ -440,9 +440,9 @@ class Engine
             _delta_time = (SDL_GetTicks() - _previous_frame_time) / 1000.0f;
             _previous_frame_time = SDL_GetTicks();
 
-            _mesh.rotation.x += 0.5 * _delta_time;
-            _mesh.rotation.y += 0.5 * _delta_time;
-            _mesh.rotation.z += 0.5 * _delta_time;
+            // _mesh.rotation.x += 0.5 * _delta_time;
+            // _mesh.rotation.y += 0.5 * _delta_time;
+            // _mesh.rotation.z += 0.5 * _delta_time;
 
             // _mesh.scale.x += 0.1 * _delta_time;
             // _mesh.scale.y += 0.1 * _delta_time;
@@ -545,9 +545,9 @@ class Engine
 
                 Triangle projected_triangle = Triangle{
                     {
-                        Vec2{ projected_points[0].x, projected_points[0].y},
-                        Vec2{ projected_points[1].x, projected_points[1].y},
-                        Vec2{ projected_points[2].x, projected_points[2].y},
+                        Vec4{ projected_points[0].x, projected_points[0].y, projected_points[0].z, projected_points[0].w },
+                        Vec4{ projected_points[1].x, projected_points[1].y, projected_points[1].z, projected_points[1].w },
+                        Vec4{ projected_points[2].x, projected_points[2].y, projected_points[2].z, projected_points[2].w }
                     },
                     {
                         Tex2{ mesh_face.a_uv.u , mesh_face.a_uv.v },
@@ -598,9 +598,9 @@ class Engine
 
                 // Draw textured triangle
                 DrawTexturedTriangle(
-                    triangle.points[0].x, triangle.points[0].y, triangle.texcoords[0].u, triangle.texcoords[0].v, // vertex A
-                    triangle.points[1].x, triangle.points[1].y, triangle.texcoords[1].u, triangle.texcoords[1].v, // vertex B
-                    triangle.points[2].x, triangle.points[2].y, triangle.texcoords[2].u, triangle.texcoords[2].v, // vertex C
+                    triangle.points[0].x, triangle.points[0].y, triangle.points[0].z, triangle.points[0].w, triangle.texcoords[0].u, triangle.texcoords[0].v, // vertex A
+                    triangle.points[1].x, triangle.points[1].y, triangle.points[1].z, triangle.points[1].w, triangle.texcoords[1].u, triangle.texcoords[1].v, // vertex B
+                    triangle.points[2].x, triangle.points[2].y, triangle.points[2].z, triangle.points[2].w, triangle.texcoords[2].u, triangle.texcoords[2].v, // vertex C
                     _mesh_texture
                 );
             }
@@ -739,22 +739,38 @@ class Engine
 
         void DrawTexel(
             int x, int y,
-            const Vec2& point_a, const Vec2& point_b, const Vec2& point_c,
+            const Vec4& point_a, const Vec4& point_b, const Vec4& point_c,
             float u0, float v0, float u1, float v1, float u2, float v2,
             uint32_t* texture
         ) {
-            Vec2 point_p = Vec2{ (float)x, (float)y };
-            Vec3 weights = barycentric_weights(point_a, point_b, point_c, point_p);
+            Vec2 p = Vec2{ (float)x, (float)y };
+            Vec2 a = Vec2{ point_a.x, point_a.y };
+            Vec2 b = Vec2{ point_b.x, point_b.y };
+            Vec2 c = Vec2{ point_c.x, point_c.y };
+
+            Vec3 weights = barycentric_weights(a, b, c, p);
 
             float alpha = weights.x;
             float beta = weights.y;
             float gamma = weights.z;
 
-            // Perform the interpolation of all U and V values using barycentric weights
-            float interpolated_u = (u0) * alpha + (u1) * beta + (u2) * gamma;
-            float interpolated_v = (v0) * alpha + (v1) * beta + (v2) * gamma;
+            /* Variables to store the interpolated values of U, V and 1/w for the current pixel */
+            float interpolated_u;
+            float interpolated_v;
+            float interpolated_reciprocal_w;
 
-            // Map the UV coordinate to the full texture width and height
+            /* Perform the interpolation of all U and V values using barycentric weights */
+            interpolated_u = (u0 / point_a.w) * alpha + (u1 / point_b.w) * beta + (u2 / point_c.w) * gamma;
+            interpolated_v = (v0 / point_a.w) * alpha + (v1 / point_b.w) * beta + (v2 / point_c.w) * gamma;
+
+            /* Also interpolate the value of 1/w for the current pixel */
+            interpolated_reciprocal_w = (1 / point_a.w) * alpha + (1 / point_b.w) * beta + (1 / point_c.w) * gamma;
+
+            /* Now we can divide back both interpolated values by 1/w */
+            interpolated_u /= interpolated_reciprocal_w;
+            interpolated_v /= interpolated_reciprocal_w;
+
+            /* Map the UV coordinate to the full texture width and height */
             int tex_x = abs((int)(interpolated_u * _texture_width));
             int tex_y = abs((int)(interpolated_v * _texture_height));
 
@@ -765,19 +781,19 @@ class Engine
         }
 
         void DrawTexturedTriangle(
-            int x0, int y0, float u0, float v0, 
-            int x1, int y1, float u1, float v1, 
-            int x2, int y2, float u2, float v2,
+            int x0, int y0, float z0, float w0, float u0, float v0, 
+            int x1, int y1, float z1, float w1, float u1, float v1, 
+            int x2, int y2, float z2, float w2, float u2, float v2,
             uint32_t* texture
         )
         {
             /* We need to sort the vertices by y-coordinate ascending (y0 < y1 < y2) */
-            SortInAscendingOrder(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+            SortInAscendingOrder(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2);
 
             /* Create vector points and texture coords after we sort the vertices */
-            Vec2 point_a{ (float)x0, (float)y0 };
-            Vec2 point_b{ (float)x1, (float)y1 };
-            Vec2 point_c{ (float)x2, (float)y2 }; 
+            Vec4 point_a{ (float)x0, (float)y0, z0, w0 };
+            Vec4 point_b{ (float)x1, (float)y1, z1, w1 };
+            Vec4 point_c{ (float)x2, (float)y2, z2, w2 }; 
 
             ///////////////////////////////////////////////////////
             // Render the upper part of the triangle (flat-bottom)
@@ -966,24 +982,24 @@ class Engine
         }
 
         void SortInAscendingOrder(
-            int& x0, int& y0, float& u0, float& v0,
-            int& x1, int& y1, float& u1, float& v1,
-            int& x2, int& y2, float& u2, float& v2
+            int& x0, int& y0, float& z0, float& w0, float& u0, float& v0,
+            int& x1, int& y1, float& z1, float& w1, float& u1, float& v1,
+            int& x2, int& y2, float& z2, float& w2, float& u2, float& v2
         )
         {
-            std::array<std::tuple<int, int, float, float>, 3> points = {
-                std::make_tuple(x0, y0, u0, v0),
-                std::make_tuple(x1, y1, u1, v1),
-                std::make_tuple(x2, y2, u2, v2),
+            std::array<std::tuple<int, int, float, float, float, float>, 3> points = {
+                std::make_tuple(x0, y0, z0, w0, u0, v0),
+                std::make_tuple(x1, y1, z1, w1, u1, v1),
+                std::make_tuple(x2, y2, z2, w2, u2, v2),
             };
 
-            std::sort(points.begin(), points.end(), [](const std::tuple<int, int, float, float>& a, const std::tuple<int, int, float, float>& b){
+            std::sort(points.begin(), points.end(), [](const std::tuple<int, int, float, float, float, float>& a, const std::tuple<int, int, float, float, float, float>& b){
                 return std::get<1>(a) < std::get<1>(b); /* compare by y value */
             });
 
-            x0 = std::get<0>(points[0]); y0 = std::get<1>(points[0]); u0 = std::get<2>(points[0]); v0 = std::get<3>(points[0]);
-            x1 = std::get<0>(points[1]); y1 = std::get<1>(points[1]); u1 = std::get<2>(points[1]); v1 = std::get<3>(points[1]);
-            x2 = std::get<0>(points[2]); y2 = std::get<1>(points[2]); u2 = std::get<2>(points[2]); v2 = std::get<3>(points[2]);
+            x0 = std::get<0>(points[0]); y0 = std::get<1>(points[0]); z0 = std::get<2>(points[0]); w0 = std::get<3>(points[0]); u0 = std::get<4>(points[0]); v0 = std::get<5>(points[0]);
+            x1 = std::get<0>(points[1]); y1 = std::get<1>(points[1]); z1 = std::get<2>(points[1]); w1 = std::get<3>(points[1]); u1 = std::get<4>(points[1]); v1 = std::get<5>(points[1]);
+            x2 = std::get<0>(points[2]); y2 = std::get<1>(points[2]); z2 = std::get<2>(points[2]); w2 = std::get<3>(points[2]); u2 = std::get<4>(points[2]); v2 = std::get<5>(points[2]);
         }
 
         void SortInAscendingOrder(int& x0, int& y0, int& x1, int& y1, int& x2, int& y2)
@@ -1016,26 +1032,48 @@ class Engine
                 Vec3{ -1.0f, -1.0f,  1.0f }  // 8
             };
 
+            // std::array<Face, CUBE_MESH_FACES> cube_mesh_faces = {
+                
+            //     // front
+            //     Face{ 1, 2, 3, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+            //     Face{ 1, 3, 4, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+            //     // right
+            //     Face{ 4, 3, 5, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+            //     Face{ 4, 5, 6, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+            //     // back
+            //     Face{ 6, 5, 7, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+            //     Face{ 6, 7, 8, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+            //     // left
+            //     Face{ 8, 7, 2, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+            //     Face{ 8, 2, 1, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+            //     // top
+            //     Face{ 2, 7, 5, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+            //     Face{ 2, 5, 3, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+            //     // bottom
+            //     Face{ 6, 8, 1, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+            //     Face{ 6, 1, 4, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF }
+            // };
+
             std::array<Face, CUBE_MESH_FACES> cube_mesh_faces = {
                 
                 // front
-                Face{ 1, 2, 3, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
-                Face{ 1, 3, 4, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 1, 2, 3, Tex2{ 0, 1 }, Tex2{ 0, 0 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 1, 3, 4, Tex2{ 0, 1 }, Tex2{ 1, 0 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
                 // right
-                Face{ 4, 3, 5, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
-                Face{ 4, 5, 6, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 4, 3, 5, Tex2{ 0, 1 }, Tex2{ 0, 0 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 4, 5, 6, Tex2{ 0, 1 }, Tex2{ 1, 0 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
                 // back
-                Face{ 6, 5, 7, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
-                Face{ 6, 7, 8, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 6, 5, 7, Tex2{ 0, 1 }, Tex2{ 0, 0 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 6, 7, 8, Tex2{ 0, 1 }, Tex2{ 1, 0 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
                 // left
-                Face{ 8, 7, 2, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
-                Face{ 8, 2, 1, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 8, 7, 2, Tex2{ 0, 1 }, Tex2{ 0, 0 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 8, 2, 1, Tex2{ 0, 1 }, Tex2{ 1, 0 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
                 // top
-                Face{ 2, 7, 5, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
-                Face{ 2, 5, 3, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 2, 7, 5, Tex2{ 0, 1 }, Tex2{ 0, 0 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 2, 5, 3, Tex2{ 0, 1 }, Tex2{ 1, 0 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
                 // bottom
-                Face{ 6, 8, 1, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
-                Face{ 6, 1, 4, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF }
+                Face{ 6, 8, 1, Tex2{ 0, 1 }, Tex2{ 0, 0 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
+                Face{ 6, 1, 4, Tex2{ 0, 1 }, Tex2{ 1, 0 }, Tex2{ 1, 1 }, 0xFFFFFFFF }
             };
 
             for(int i = 0; i < CUBE_MESH_VERTICES; i++)
