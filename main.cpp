@@ -11,6 +11,9 @@
 #include <algorithm>
 #include <string>
 #include <iostream>
+#include <tuple>
+#include <cstring>
+#include "globals.h"
 
 #define FPS 30
 #define FRAME_TARGET_TIME (1000 / FPS)
@@ -44,18 +47,28 @@ struct Mat4
     float m[4][4];
 };
 
+struct Tex2
+{
+    float u;
+    float v;
+};
+
 /* It stores the indices */
 struct Face
 {
     int a;
     int b;
     int c;
+    Tex2 a_uv;
+    Tex2 b_uv;
+    Tex2 c_uv;
     uint32_t color;
-};
+}; 
 
 struct Triangle
 {
     std::array<Vec2, 3> points;
+    std::array<Tex2, 3> texcoords;
     uint32_t color;
 };
 
@@ -99,6 +112,15 @@ Vec3 vec3_add(const Vec3& a, const Vec3& b)
         a.x + b.x,
         a.y + b.y,
         a.z + b.z
+    };
+    return result;
+}
+
+Vec2 vec2_sub(const Vec2& a, const Vec2& b)
+{
+    Vec2 result = {
+        a.x - b.x,
+        a.y - b.y
     };
     return result;
 }
@@ -373,9 +395,13 @@ class Engine
 
             _light.direction = Vec3{0.0, 0.0, 1.0};
 
-            // LoadCubeMeshData();
+            /* Manually load the hardcoded texture data from the static array */
+            // std::memcpy(_mesh_texture.data(), &REDBRICK_TEXTURE, _texture_width * _texture_height);
+            _mesh_texture = (uint32_t*)REDBRICK_TEXTURE;
+
+            LoadCubeMeshData();
             // LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\f22.obj");
-            LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.obj");
+            // LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.obj");
         }
 
         void ProcessInput()
@@ -522,7 +548,12 @@ class Engine
                         Vec2{ projected_points[0].x, projected_points[0].y},
                         Vec2{ projected_points[1].x, projected_points[1].y},
                         Vec2{ projected_points[2].x, projected_points[2].y},
-                    }, 
+                    },
+                    {
+                        Tex2{ mesh_face.a_uv.u , mesh_face.a_uv.v },
+                        Tex2{ mesh_face.b_uv.u , mesh_face.b_uv.v },
+                        Tex2{ mesh_face.c_uv.u , mesh_face.c_uv.v }
+                    },
                     triangle_color
                 };
 
@@ -547,12 +578,12 @@ class Engine
                 // DrawRectangle({static_cast<uint32_t>(triangle.points[2].x), static_cast<uint32_t>(triangle.points[2].y), 3, 3, 0xFFFFFF00});
 
                 // Draw filled triangle
-                DrawFilledTriangle(
-                    triangle.points[0].x, triangle.points[0].y, // vertex A
-                    triangle.points[1].x, triangle.points[1].y, // vertex B
-                    triangle.points[2].x, triangle.points[2].y, // vertex C
-                    triangle.color
-                );
+                // DrawFilledTriangle(
+                //     triangle.points[0].x, triangle.points[0].y, // vertex A
+                //     triangle.points[1].x, triangle.points[1].y, // vertex B
+                //     triangle.points[2].x, triangle.points[2].y, // vertex C
+                //     triangle.color
+                // );
 
                 // Draw unfilled triangle
                 // DrawTriangle(
@@ -564,6 +595,14 @@ class Engine
                 //     triangle.points[2].y,
                 //     triangle.color
                 // );
+
+                // Draw textured triangle
+                DrawTexturedTriangle(
+                    triangle.points[0].x, triangle.points[0].y, triangle.texcoords[0].u, triangle.texcoords[0].v, // vertex A
+                    triangle.points[1].x, triangle.points[1].y, triangle.texcoords[1].u, triangle.texcoords[1].v, // vertex B
+                    triangle.points[2].x, triangle.points[2].y, triangle.texcoords[2].u, triangle.texcoords[2].v, // vertex C
+                    _mesh_texture
+                );
             }
 
             /* Clear the array of triangles to render every frame loop */
@@ -671,6 +710,136 @@ class Engine
             DrawLine(x0, y0, x1, y1, color);
             DrawLine(x1, y1, x2, y2, color);
             DrawLine(x2, y2, x0, y0, color);
+        }
+
+        Vec3 barycentric_weights(const Vec2& a, const Vec2& b, const Vec2& c, const Vec2& p)
+        {
+            // Find the vectors between the vertices ABC and point p
+            Vec2 ac = vec2_sub(c, a);
+            Vec2 ab = vec2_sub(b, a);
+            Vec2 ap = vec2_sub(p, a);
+            Vec2 pc = vec2_sub(c, p);
+            Vec2 pb = vec2_sub(b, p);
+
+            // Compute the area of the full parallegram/triangle ABC using 2D cross product
+            float area_parallelogram_abc = (ac.x * ab.y - ac.y * ab.x); // || AC x AB ||
+
+            // Alpha is the area of the small parallelogram/triangle PBC divided by the area of the full parallelogram/triangle ABC
+            float alpha = (pc.x * pb.y - pc.y * pb.x) / area_parallelogram_abc;
+
+            // Beta is the area of the small parallelogram/triangle APC divided by the area of the full parallelogram/triangle ABC
+            float beta = (ac.x * ap.y - ac.y * ap.x) / area_parallelogram_abc;
+
+            // Weight gamma is easily found since barycentric coordinates always add up to 1.0
+            float gamma = 1 - alpha - beta;
+
+            Vec3 weights = Vec3{ alpha, beta, gamma };
+            return weights;
+        }
+
+        void DrawTexel(
+            int x, int y,
+            const Vec2& point_a, const Vec2& point_b, const Vec2& point_c,
+            float u0, float v0, float u1, float v1, float u2, float v2,
+            uint32_t* texture
+        ) {
+            Vec2 point_p = Vec2{ (float)x, (float)y };
+            Vec3 weights = barycentric_weights(point_a, point_b, point_c, point_p);
+
+            float alpha = weights.x;
+            float beta = weights.y;
+            float gamma = weights.z;
+
+            // Perform the interpolation of all U and V values using barycentric weights
+            float interpolated_u = (u0) * alpha + (u1) * beta + (u2) * gamma;
+            float interpolated_v = (v0) * alpha + (v1) * beta + (v2) * gamma;
+
+            // Map the UV coordinate to the full texture width and height
+            int tex_x = abs((int)(interpolated_u * _texture_width));
+            int tex_y = abs((int)(interpolated_v * _texture_height));
+
+            if(tex_x >= 0 && tex_x < _texture_width && tex_y >= 0 && tex_y < _texture_height)
+            {
+                DrawPixel(x, y, texture[(_texture_width * tex_y) + tex_x]);
+            }
+        }
+
+        void DrawTexturedTriangle(
+            int x0, int y0, float u0, float v0, 
+            int x1, int y1, float u1, float v1, 
+            int x2, int y2, float u2, float v2,
+            uint32_t* texture
+        )
+        {
+            /* We need to sort the vertices by y-coordinate ascending (y0 < y1 < y2) */
+            SortInAscendingOrder(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+
+            /* Create vector points and texture coords after we sort the vertices */
+            Vec2 point_a{ (float)x0, (float)y0 };
+            Vec2 point_b{ (float)x1, (float)y1 };
+            Vec2 point_c{ (float)x2, (float)y2 }; 
+
+            ///////////////////////////////////////////////////////
+            // Render the upper part of the triangle (flat-bottom)
+            ///////////////////////////////////////////////////////
+            float inv_slope_1 = 0;
+            float inv_slope_2 = 0;
+
+            if (y1 - y0 != 0) inv_slope_1 = (float)(x1 - x0) / (y1 - y0);
+            if (y2 - y0 != 0) inv_slope_2 = (float)(x2 - x0) / (y2 - y0);
+
+            if (y1 - y0 != 0)
+            {
+                for (int y = y0; y <= y1; y++)
+                {
+                    int x_start = x1 + (y - y1) * inv_slope_1;
+                    int x_end = x0 + (y - y0) * inv_slope_2;
+
+                    if (x_end < x_start)
+                    {
+                        // int_swap(&x_start, &x_end); // swap if x_start is to the right of x_end
+                        std::swap(x_start, x_end);
+                    }
+
+                    for (int x = x_start; x < x_end; x++)
+                    {
+                        // DrawPixel(x, y, 0xFFFF00FF);
+                        // Draw our pixel with the color that comes from the texture
+                        DrawTexel(x, y, point_a, point_b, point_c, u0, v0, u1, v1, u2, v2, texture);
+                    }
+                }
+            }
+
+            ///////////////////////////////////////////////////////
+            // Render the bottom part of the triangle (flat-top)
+            ///////////////////////////////////////////////////////
+            inv_slope_1 = 0;
+            inv_slope_2 = 0;
+
+            if (y2 - y1 != 0) inv_slope_1 = (float)(x2 - x1) / (y2 - y1);
+            if (y2 - y0 != 0) inv_slope_2 = (float)(x2 - x0) / (y2 - y0);
+
+            if (y2 - y1 != 0)
+            {
+                for (int y = y1; y <= y2; y++)
+                {
+                    int x_start = x1 + (y - y1) * inv_slope_1;
+                    int x_end = x0 + (y - y0) * inv_slope_2;
+
+                    if (x_end < x_start)
+                    {
+                        // int_swap(&x_start, &x_end); // swap if x_start is to the right of x_end
+                        std::swap(x_start, x_end);
+                    }
+
+                    for (int x = x_start; x < x_end; x++)
+                    {
+                        // DrawPixel(x, y, 0xFFFF00FF);
+                        // Draw our pixel with the color that comes from the texture
+                        DrawTexel(x, y, point_a, point_b, point_c, u0, v0, u1, v1, u2, v2, texture);
+                    }
+                }
+            }
         }
 
         void FillColorBuffer(uint32_t color)
@@ -796,6 +965,27 @@ class Engine
             }
         }
 
+        void SortInAscendingOrder(
+            int& x0, int& y0, float& u0, float& v0,
+            int& x1, int& y1, float& u1, float& v1,
+            int& x2, int& y2, float& u2, float& v2
+        )
+        {
+            std::array<std::tuple<int, int, float, float>, 3> points = {
+                std::make_tuple(x0, y0, u0, v0),
+                std::make_tuple(x1, y1, u1, v1),
+                std::make_tuple(x2, y2, u2, v2),
+            };
+
+            std::sort(points.begin(), points.end(), [](const std::tuple<int, int, float, float>& a, const std::tuple<int, int, float, float>& b){
+                return std::get<1>(a) < std::get<1>(b); /* compare by y value */
+            });
+
+            x0 = std::get<0>(points[0]); y0 = std::get<1>(points[0]); u0 = std::get<2>(points[0]); v0 = std::get<3>(points[0]);
+            x1 = std::get<0>(points[1]); y1 = std::get<1>(points[1]); u1 = std::get<2>(points[1]); v1 = std::get<3>(points[1]);
+            x2 = std::get<0>(points[2]); y2 = std::get<1>(points[2]); u2 = std::get<2>(points[2]); v2 = std::get<3>(points[2]);
+        }
+
         void SortInAscendingOrder(int& x0, int& y0, int& x1, int& y1, int& x2, int& y2)
         {
             std::array<std::pair<int, int>, 3> points = {
@@ -829,23 +1019,23 @@ class Engine
             std::array<Face, CUBE_MESH_FACES> cube_mesh_faces = {
                 
                 // front
-                Face{ 1, 2, 3, 0xFFFFFFFF},
-                Face{ 1, 3, 4, 0xFFFFFFFF},
+                Face{ 1, 2, 3, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+                Face{ 1, 3, 4, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
                 // right
-                Face{ 4, 3, 5, 0xFFFFFFFF},
-                Face{ 4, 5, 6, 0xFFFFFFFF},
+                Face{ 4, 3, 5, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+                Face{ 4, 5, 6, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
                 // back
-                Face{ 6, 5, 7, 0xFFFFFFFF},
-                Face{ 6, 7, 8, 0xFFFFFFFF},
+                Face{ 6, 5, 7, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+                Face{ 6, 7, 8, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
                 // left
-                Face{ 8, 7, 2, 0xFFFFFFFF},
-                Face{ 8, 2, 1, 0xFFFFFFFF},
+                Face{ 8, 7, 2, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+                Face{ 8, 2, 1, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
                 // top
-                Face{ 2, 7, 5, 0xFFFFFFFF},
-                Face{ 2, 5, 3, 0xFFFFFFFF},
+                Face{ 2, 7, 5, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+                Face{ 2, 5, 3, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF },
                 // bottom
-                Face{ 6, 8, 1, 0xFFFFFFFF},
-                Face{ 6, 1, 4, 0xFFFFFFFF}
+                Face{ 6, 8, 1, Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF },
+                Face{ 6, 1, 4, Tex2{ 0, 0 }, Tex2{ 1, 1 }, Tex2{ 1, 0 }, 0xFFFFFFFF }
             };
 
             for(int i = 0; i < CUBE_MESH_VERTICES; i++)
@@ -892,7 +1082,7 @@ class Engine
                         &vertex_indices[2], &texture_indices[2], &normal_indices[2]
                     ); 
 
-                    Face face{vertex_indices[0], vertex_indices[1], vertex_indices[2], 0xFFFFFFFF};
+                    Face face{vertex_indices[0], vertex_indices[1], vertex_indices[2], Tex2{ 0, 0 }, Tex2{ 0, 1 }, Tex2{ 1, 1 }, 0xFFFFFFFF};
                     _mesh.faces.push_back(std::move(face));
                 }
             }
@@ -917,6 +1107,14 @@ class Engine
 
         std::vector<Triangle> _triangles_to_render;
         Mesh _mesh;
+
+        // static constexpr int _texture_width = 64;
+        // static constexpr int _texture_height = 64;
+        // std::array<uint32_t, (_texture_width * _texture_height) / sizeof(uint32_t)> _mesh_texture;
+
+        int _texture_width = 64;
+        int _texture_height = 64;
+        uint32_t* _mesh_texture;
 };
 
 int main()
