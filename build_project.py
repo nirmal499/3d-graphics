@@ -32,7 +32,7 @@ print(f"> Detected {cpu_count} CPU cores")
 cmake_build_cmd = [
     "cmake", 
     "--build", build_dir,
-    # "--verbose",
+    "--verbose",
     "--", f"-j{cpu_count}"
 ]
 print(f"> Running command: {' '.join(cmake_build_cmd)}")

@@ -14,6 +14,7 @@
 #include <tuple>
 #include <cstring>
 #include "globals.h"
+#include "upng_wrapper.h"
 
 #define FPS 30
 #define FRAME_TARGET_TIME (1000 / FPS)
@@ -379,7 +380,7 @@ class Engine
 
         void Setup()
         {
-            _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
+            _colorBufferTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
 
 
             // Initialize the perspective projection matrix
@@ -397,11 +398,12 @@ class Engine
 
             /* Manually load the hardcoded texture data from the static array */
             // std::memcpy(_mesh_texture.data(), &REDBRICK_TEXTURE, _texture_width * _texture_height);
-            _mesh_texture = (uint32_t*)REDBRICK_TEXTURE;
+            // _mesh_texture = (uint32_t*)REDBRICK_TEXTURE;
 
             LoadCubeMeshData();
             // LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\f22.obj");
             // LoadObjFileData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.obj");
+            LoadPNGTextureData("C:\\my_code\\win_cpp\\3D_Graphics\\assets\\cube.png");
         }
 
         void ProcessInput()
@@ -440,9 +442,9 @@ class Engine
             _delta_time = (SDL_GetTicks() - _previous_frame_time) / 1000.0f;
             _previous_frame_time = SDL_GetTicks();
 
-            // _mesh.rotation.x += 0.5 * _delta_time;
-            // _mesh.rotation.y += 0.5 * _delta_time;
-            // _mesh.rotation.z += 0.5 * _delta_time;
+            _mesh.rotation.x += 0.5 * _delta_time;
+            _mesh.rotation.y += 0.5 * _delta_time;
+            _mesh.rotation.z += 0.5 * _delta_time;
 
             // _mesh.scale.x += 0.1 * _delta_time;
             // _mesh.scale.y += 0.1 * _delta_time;
@@ -636,6 +638,7 @@ class Engine
 
         void DestroyWindow()
         {
+            upng_free(_png_texture);
             SDL_DestroyRenderer(_renderer);
             SDL_DestroyWindow(_window);
             SDL_Quit();
@@ -1087,6 +1090,21 @@ class Engine
             }
         }
 
+        void LoadPNGTextureData(const char* filename)
+        {
+            _png_texture = upng_new_from_file(filename);
+            if (_png_texture != NULL)
+            {
+                upng_decode(_png_texture);
+                if (upng_get_error(_png_texture) == UPNG_EOK)
+                {
+                    _mesh_texture = (uint32_t*)upng_get_buffer(_png_texture);
+                    _texture_width = upng_get_width(_png_texture);
+                    _texture_height = upng_get_height(_png_texture);
+                }
+            }
+        }
+
         void LoadObjFileData(const char* filename)
         {
             std::ifstream infile(filename);
@@ -1153,6 +1171,7 @@ class Engine
         int _texture_width = 64;
         int _texture_height = 64;
         uint32_t* _mesh_texture;
+        upng_t* _png_texture;
 };
 
 int main()

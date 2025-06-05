@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 4.0.1)
 
 project(SDL)
 
-set(SRCS main.cpp)
+set(SRCS main.cpp upng.c)
 set(SDL_ROOT "C:/my_opt/SDL2-devel-2.0.12-mingw/SDL2-2.0.12/x86_64-w64-mingw32")
 
 # Find SDL3 import library (libSDL2.dll.a)
